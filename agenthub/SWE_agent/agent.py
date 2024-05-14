@@ -1,14 +1,13 @@
-from typing import List
-
 from opendevin.controller.agent import Agent
 from opendevin.controller.state.state import State
 from opendevin.events.action import (
     Action,
-    AgentThinkAction,
     FileReadAction,
     FileWriteAction,
+    MessageAction,
 )
 from opendevin.events.observation import Observation
+from opendevin.events.serialization.event import event_to_memory
 from opendevin.llm.llm import LLM
 
 from .parser import parse_command
@@ -32,16 +31,16 @@ class SWEAgent(Agent):
         super().__init__(llm)
         self.memory_window = 4
         self.max_retries = 2
-        self.running_memory: List[str] = []
+        self.running_memory: list[str] = []
         self.cur_file: str = ''
         self.cur_line: int = 0
 
     def _remember(self, action: Action, observation: Observation) -> None:
         """Agent has a limited memory of the few steps implemented as a queue"""
-        memory = MEMORY_FORMAT(action.to_memory(), observation.to_memory())
+        memory = MEMORY_FORMAT(event_to_memory(action), event_to_memory(observation))
         self.running_memory.append(memory)
 
-    def _think_act(self, messages: List[dict]) -> tuple[Action, str]:
+    def _think_act(self, messages: list[dict]) -> tuple[Action, str]:
         resp = self.llm.completion(
             messages=messages,
             temperature=0.05,
@@ -71,7 +70,8 @@ class SWEAgent(Agent):
         for prev_action, obs in state.updated_info:
             self._remember(prev_action, obs)
 
-        prompt = STEP_PROMPT(state.plan.main_goal, self.cur_file, self.cur_line)
+        goal = state.get_current_user_intent()
+        prompt = STEP_PROMPT(goal, self.cur_file, self.cur_line)
 
         msgs = [
             {'content': SYSTEM_MESSAGE, 'role': 'system'},
@@ -93,13 +93,13 @@ class SWEAgent(Agent):
             action, thought = self._think_act(messages=msgs)
 
         if not action:
-            action = AgentThinkAction(thought)
+            action = MessageAction(thought)
 
         self._update(action)
         self.latest_action = action
         return action
 
-    def search_memory(self, query: str) -> List[str]:
+    def search_memory(self, query: str) -> list[str]:
         return [item for item in self.running_memory if query in item]
 
     def reset(self) -> None:

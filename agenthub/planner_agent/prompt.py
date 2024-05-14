@@ -1,43 +1,16 @@
-import json
-from typing import Dict, List, Tuple, Type
-
-from opendevin.controller.state.plan import Plan
+from opendevin.controller.state.state import State
 from opendevin.core.logger import opendevin_logger as logger
 from opendevin.core.schema import ActionType
+from opendevin.core.utils import json
 from opendevin.events.action import (
     Action,
-    AddTaskAction,
-    AgentFinishAction,
-    AgentRecallAction,
-    AgentSummarizeAction,
-    AgentThinkAction,
-    BrowseURLAction,
-    CmdKillAction,
-    CmdRunAction,
-    FileReadAction,
-    FileWriteAction,
-    ModifyTaskAction,
     NullAction,
-    action_from_dict,
 )
 from opendevin.events.observation import (
     NullObservation,
-    Observation,
 )
-
-ACTION_TYPE_TO_CLASS: Dict[str, Type[Action]] = {
-    ActionType.RUN: CmdRunAction,
-    ActionType.KILL: CmdKillAction,
-    ActionType.BROWSE: BrowseURLAction,
-    ActionType.READ: FileReadAction,
-    ActionType.WRITE: FileWriteAction,
-    ActionType.RECALL: AgentRecallAction,
-    ActionType.THINK: AgentThinkAction,
-    ActionType.SUMMARIZE: AgentSummarizeAction,
-    ActionType.FINISH: AgentFinishAction,
-    ActionType.ADD_TASK: AddTaskAction,
-    ActionType.MODIFY_TASK: ModifyTaskAction,
-}
+from opendevin.events.serialization.action import action_from_dict
+from opendevin.events.serialization.event import event_to_memory
 
 HISTORY_SIZE = 10
 
@@ -106,23 +79,23 @@ It must be an object, and it must contain two fields:
   * `command` - the command to run
   * `background` - if true, run the command in the background, so that other commands can be run concurrently. Useful for e.g. starting a server. You won't be able to see the logs. You don't need to end the command with `&`, just set this to true.
 * `kill` - kills a background command
-  * `id` - the ID of the background command to kill
+  * `command_id` - the ID of the background command to kill
 * `browse` - opens a web page. Arguments:
   * `url` - the URL to open
-* `think` - make a plan, set a goal, or record your thoughts. Arguments:
-  * `thought` - the thought to record
+* `message` - make a plan, set a goal, or record your thoughts. Arguments:
+  * `content` - the message to record
 * `add_task` - add a task to your plan. Arguments:
-  * `parent` - the ID of the parent task
+  * `parent` - the ID of the parent task (leave empty if it should go at the top level)
   * `goal` - the goal of the task
   * `subtasks` - a list of subtasks, each of which is a map with a `goal` key.
 * `modify_task` - close a task. Arguments:
-  * `id` - the ID of the task to close
+  * `task_id` - the ID of the task to close
   * `state` - set to 'in_progress' to start the task, 'completed' to finish it, 'verified' to assert that it was successful, 'abandoned' to give up on it permanently, or `open` to stop working on it for now.
 * `finish` - if ALL of your tasks and subtasks have been verified or abandoned, and you're absolutely certain that you've completed your task and have tested your work, use the finish action to stop working.
 
-You MUST take time to think in between read, write, run, browse, and recall actions.
+You MUST take time to think in between read, write, run, browse, and recall actions--do this with the `message` action.
 You should never act twice in a row without thinking. But if your last several
-actions are all `think` actions, you should consider taking a different action.
+actions are all `message` actions, you should consider taking a different action.
 
 What is your next thought or action? Again, you must reply with JSON, and only with JSON.
 
@@ -139,7 +112,7 @@ def get_hint(latest_action_id: str) -> str:
         ActionType.READ: 'You should think about the file you just read, what you learned from it, and how that affects your plan.',
         ActionType.WRITE: 'You just changed a file. You should think about how it affects your plan.',
         ActionType.BROWSE: 'You should think about the page you just visited, and what you learned from it.',
-        ActionType.THINK: "Look at your last thought in the history above. What does it suggest? Don't think anymore--take action.",
+        ActionType.MESSAGE: "Look at your last thought in the history above. What does it suggest? Don't think anymore--take action.",
         ActionType.RECALL: 'You should think about the information you just recalled, and how it should affect your plan.',
         ActionType.ADD_TASK: 'You should think about the next action to take.',
         ActionType.MODIFY_TASK: 'You should think about the next action to take.',
@@ -149,47 +122,42 @@ def get_hint(latest_action_id: str) -> str:
     return hints.get(latest_action_id, '')
 
 
-def get_prompt(plan: Plan, history: List[Tuple[Action, Observation]]) -> str:
+def get_prompt(state: State) -> str:
     """
     Gets the prompt for the planner agent.
     Formatted with the most recent action-observation pairs, current task, and hint based on last action
 
     Parameters:
-    - plan (Plan): The original plan outlined by the user with LLM defined tasks
-    - history (List[Tuple[Action, Observation]]): List of corresponding action-observation pairs
+    - state (State): The state of the current agent
 
     Returns:
     - str: The formatted string prompt with historical values
     """
 
-    plan_str = json.dumps(plan.task.to_dict(), indent=2)
-    sub_history = history[-HISTORY_SIZE:]
+    plan_str = json.dumps(state.root_task.to_dict(), indent=2)
+    sub_history = state.history[-HISTORY_SIZE:]
     history_dicts = []
     latest_action: Action = NullAction()
     for action, observation in sub_history:
         if not isinstance(action, NullAction):
-            history_dicts.append(action.to_memory())
+            history_dicts.append(event_to_memory(action))
             latest_action = action
         if not isinstance(observation, NullObservation):
-            observation_dict = observation.to_memory()
-            if (
-                'extras' in observation_dict
-                and 'screenshot' in observation_dict['extras']
-            ):
-                del observation_dict['extras']['screenshot']
+            observation_dict = event_to_memory(observation)
             history_dicts.append(observation_dict)
     history_str = json.dumps(history_dicts, indent=2)
-    current_task = plan.get_current_task()
+    current_task = state.root_task.get_current_task()
     if current_task is not None:
         plan_status = f"You're currently working on this task:\n{current_task.goal}."
         if len(current_task.subtasks) == 0:
             plan_status += "\nIf it's not achievable AND verifiable with a SINGLE action, you MUST break it down into subtasks NOW."
     else:
         plan_status = "You're not currently working on any tasks. Your next action MUST be to mark a task as in_progress."
-    hint = get_hint(latest_action.to_dict()['action'])
+    hint = get_hint(event_to_memory(latest_action).get('action', ''))
     logger.info('HINT:\n' + hint, extra={'msg_type': 'INFO'})
+    task = state.get_current_user_intent()
     return prompt % {
-        'task': plan.main_goal,
+        'task': task,
         'plan': plan_str,
         'history': history_str,
         'hint': hint,
@@ -207,9 +175,6 @@ def parse_response(response: str) -> Action:
     Returns:
     - Action: A valid next action to perform from model output
     """
-    json_start = response.find('{')
-    json_end = response.rfind('}') + 1
-    response = response[json_start:json_end]
     action_dict = json.loads(response)
     if 'contents' in action_dict:
         # The LLM gets confused here. Might as well be robust

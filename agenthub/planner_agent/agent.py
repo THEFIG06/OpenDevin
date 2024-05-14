@@ -1,5 +1,3 @@
-from typing import List
-
 from opendevin.controller.agent import Agent
 from opendevin.controller.state.state import State
 from opendevin.events.action import Action, AgentFinishAction
@@ -36,9 +34,13 @@ class PlannerAgent(Agent):
         - Action: The next action to take based on llm response
         """
 
-        if state.plan.task.state in ['completed', 'verified', 'abandoned']:
+        if state.root_task.state in [
+            'completed',
+            'verified',
+            'abandoned',
+        ]:
             return AgentFinishAction()
-        prompt = get_prompt(state.plan, state.history)
+        prompt = get_prompt(state)
         messages = [{'content': prompt, 'role': 'user'}]
         resp = self.llm.completion(messages=messages)
         action_resp = resp['choices'][0]['message']['content']
@@ -46,5 +48,5 @@ class PlannerAgent(Agent):
         action = parse_response(action_resp)
         return action
 
-    def search_memory(self, query: str) -> List[str]:
+    def search_memory(self, query: str) -> list[str]:
         return []

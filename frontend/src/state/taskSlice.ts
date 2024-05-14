@@ -1,21 +1,23 @@
 import { createSlice } from "@reduxjs/toolkit";
+import { Task, TaskState } from "#/services/taskService";
 
 export const taskSlice = createSlice({
   name: "task",
   initialState: {
-    initialized: false,
-    completed: false,
+    task: {
+      id: "",
+      goal: "",
+      subtasks: [],
+      state: TaskState.OPEN_STATE,
+    } as Task,
   },
   reducers: {
-    setInitialized: (state, action) => {
-      state.initialized = action.payload;
-    },
-    setCompleted: (state, action) => {
-      state.completed = action.payload;
+    setRootTask: (state, action) => {
+      state.task = action.payload as Task;
     },
   },
 });
 
-export const { setInitialized, setCompleted } = taskSlice.actions;
+export const { setRootTask } = taskSlice.actions;
 
 export default taskSlice.reducer;
