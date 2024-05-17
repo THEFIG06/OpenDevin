@@ -73,8 +73,8 @@ class AppConfig(metaclass=Singleton):
     runtime: str = 'server'
     file_store: str = 'memory'
     file_store_path: str = '/tmp/file_store'
-    workspace_base: str = os.getcwd()
-    workspace_mount_path: str = os.getcwd()
+    workspace_base: str = os.path.join(os.getcwd(), 'workspace')
+    workspace_mount_path: str | None = None
     workspace_mount_path_in_sandbox: str = '/workspace'
     workspace_mount_rewrite: str | None = None
     cache_dir: str = '/tmp/cache'
@@ -264,6 +264,11 @@ def finalize_config(config: AppConfig):
     More tweaks to the config after it's been loaded.
     """
 
+    # Set workspace_mount_path if not set by the user
+    if config.workspace_mount_path is None:
+        config.workspace_mount_path = os.path.abspath(config.workspace_base)
+    config.workspace_base = os.path.abspath(config.workspace_base)
+
     # In local there is no sandbox, the workspace will have the same pwd as the host
     if config.sandbox_type == 'local':
         config.workspace_mount_path_in_sandbox = config.workspace_mount_path
@@ -369,6 +374,30 @@ def get_parser():
         default=config.llm.max_chars,
         type=int,
         help='The maximum number of characters to send to and receive from LLM per task',
+    )
+    parser.add_argument(
+        '--eval-output-dir',
+        default='evaluation/evaluation_outputs/outputs',
+        type=str,
+        help='The directory to save evaluation output',
+    )
+    parser.add_argument(
+        '--eval-n-limit',
+        default=None,
+        type=int,
+        help='The number of instances to evaluate',
+    )
+    parser.add_argument(
+        '--eval-num-workers',
+        default=4,
+        type=int,
+        help='The number of workers to use for evaluation',
+    )
+    parser.add_argument(
+        '--eval-note',
+        default=None,
+        type=str,
+        help='The note to add to the evaluation directory',
     )
     parser.add_argument(
         '-l',
