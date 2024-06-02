@@ -1,26 +1,27 @@
-import shutil
 import uuid
 import warnings
-from pathlib import Path
+
+from opendevin.server.data_models.feedback import FeedbackDataModel, store_feedback
 
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
     import litellm
-from fastapi import Depends, FastAPI, Response, UploadFile, WebSocket, status
+from fastapi import FastAPI, Request, Response, UploadFile, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
 from fastapi.staticfiles import StaticFiles
 
 import agenthub  # noqa F401 (we import this to get the agents registered)
 from opendevin.controller.agent import Agent
 from opendevin.core.config import config
 from opendevin.core.logger import opendevin_logger as logger
+from opendevin.events.action import ChangeAgentStateAction, NullAction
+from opendevin.events.observation import AgentStateChangedObservation, NullObservation
+from opendevin.events.serialization import event_to_dict
 from opendevin.llm import bedrock
-from opendevin.runtime import files
-from opendevin.server.agent import agent_manager
 from opendevin.server.auth import get_sid_from_token, sign_token
-from opendevin.server.session import message_stack, session_manager
+from opendevin.server.session import session_manager
 
 app = FastAPI()
 app.add_middleware(
@@ -32,6 +33,45 @@ app.add_middleware(
 )
 
 security_scheme = HTTPBearer()
+
+
+@app.middleware('http')
+async def attach_session(request: Request, call_next):
+    if request.url.path.startswith('/api/options/') or not request.url.path.startswith(
+        '/api/'
+    ):
+        response = await call_next(request)
+        return response
+
+    if not request.headers.get('Authorization'):
+        response = JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={'error': 'Missing Authorization header'},
+        )
+        return response
+
+    auth_token = request.headers.get('Authorization')
+    if 'Bearer' in auth_token:
+        auth_token = auth_token.split('Bearer')[1].strip()
+
+    request.state.sid = get_sid_from_token(auth_token)
+    if request.state.sid == '':
+        response = JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={'error': 'Invalid token'},
+        )
+        return response
+
+    request.state.session = session_manager.get_session(request.state.sid)
+    if request.state.session is None:
+        response = JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={'error': 'Session not found'},
+        )
+        return response
+
+    response = await call_next(request)
+    return response
 
 
 # This endpoint receives events from the client (i.e. the browser)
@@ -99,16 +139,41 @@ async def websocket_endpoint(websocket: WebSocket):
         ```
     """
     await websocket.accept()
-    sid = get_sid_from_token(websocket.query_params.get('token') or '')
-    if sid == '':
-        logger.error('Failed to decode token')
-        return
-    session_manager.add_session(sid, websocket)
-    agent_manager.register_agent(sid)
-    await session_manager.loop_recv(sid, agent_manager.dispatch)
+
+    session = None
+    if websocket.query_params.get('token'):
+        token = websocket.query_params.get('token')
+        sid = get_sid_from_token(token)
+
+        if sid == '':
+            await websocket.send_json({'error': 'Invalid token', 'error_code': 401})
+            await websocket.close()
+            return
+    else:
+        sid = str(uuid.uuid4())
+        token = sign_token({'sid': sid})
+
+    session = session_manager.add_or_restart_session(sid, websocket)
+    await websocket.send_json({'token': token, 'status': 'ok'})
+
+    latest_event_id = -1
+    if websocket.query_params.get('latest_event_id'):
+        latest_event_id = int(websocket.query_params.get('latest_event_id'))
+    for event in session.agent_session.event_stream.get_events(
+        start_id=latest_event_id + 1
+    ):
+        if isinstance(event, NullAction) or isinstance(event, NullObservation):
+            continue
+        if isinstance(event, ChangeAgentStateAction) or isinstance(
+            event, AgentStateChangedObservation
+        ):
+            continue
+        await websocket.send_json(event_to_dict(event))
+
+    await session.loop_recv()
 
 
-@app.get('/api/litellm-models')
+@app.get('/api/options/models')
 async def get_litellm_models():
     """
     Get all models supported by LiteLLM.
@@ -128,7 +193,7 @@ async def get_litellm_models():
     return list(set(model_list))
 
 
-@app.get('/api/agents')
+@app.get('/api/options/agents')
 async def get_agents():
     """
     Get all agents supported by LiteLLM.
@@ -142,105 +207,35 @@ async def get_agents():
     return agents
 
 
-@app.get('/api/auth')
-async def get_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-):
+@app.get('/api/list-files')
+def list_files(request: Request, path: str = '/'):
     """
-    Generate a JWT for authentication when starting a WebSocket connection. This endpoint checks if valid credentials
-    are provided and uses them to get a session ID. If no valid credentials are provided, it generates a new session ID.
+    List files.
 
-    To obtain an authentication token:
+    To list files:
     ```sh
-    curl -H "Authorization: Bearer 5ecRe7" http://localhost:3000/api/auth
-    ```
-    **Note:** If `JWT_SECRET` is set, use its value instead of `5ecRe7`.
-    """
-    if credentials and credentials.credentials:
-        sid = get_sid_from_token(credentials.credentials)
-        if not sid:
-            sid = str(uuid.uuid4())
-            logger.info(
-                f'Invalid or missing credentials, generating new session ID: {sid}'
-            )
-    else:
-        sid = str(uuid.uuid4())
-        logger.info(f'No credentials provided, generating new session ID: {sid}')
-
-    token = sign_token({'sid': sid})
-    return {'token': token, 'status': 'ok'}
-
-
-@app.get('/api/messages')
-async def get_messages(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-):
-    """
-    Get messages.
-
-    To get messages:
-    ```sh
-    curl -H "Authorization: Bearer <TOKEN>" http://localhost:3000/api/messages
+    curl http://localhost:3000/api/list-files
     ```
     """
-    data = []
-    sid = get_sid_from_token(credentials.credentials)
-    if sid != '':
-        data = message_stack.get_messages(sid)
+    if not request.state.session.agent_session.runtime:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={'error': 'Runtime not yet initialized'},
+        )
 
-    return {'messages': data}
-
-
-@app.get('/api/messages/total')
-async def get_message_total(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-):
-    """
-    Get total message count.
-
-    To get the total message count:
-    ```sh
-    curl -H "Authorization: Bearer <TOKEN>" http://localhost:3000/api/messages/total
-    ```
-    """
-    sid = get_sid_from_token(credentials.credentials)
-    return {'msg_total': message_stack.get_message_total(sid)}
-
-
-@app.delete('/api/messages')
-async def del_messages(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-):
-    """
-    Delete messages.
-
-    To delete messages:
-    ```sh
-
-    curl -X DELETE -H "Authorization: Bearer <TOKEN>" http://localhost:3000/api/messages
-    ```
-    """
-    sid = get_sid_from_token(credentials.credentials)
-    message_stack.del_messages(sid)
-    return {'ok': True}
-
-
-@app.get('/api/refresh-files')
-def refresh_files():
-    """
-    Refresh files.
-
-    To refresh files:
-    ```sh
-    curl http://localhost:3000/api/refresh-files
-    ```
-    """
-    structure = files.get_folder_structure(Path(str(config.workspace_base)))
-    return structure.to_dict()
+    try:
+        return request.state.session.agent_session.runtime.file_store.list(path)
+    except Exception as e:
+        logger.error(f'Error refreshing files: {e}', exc_info=False)
+        error_msg = f'Error refreshing files: {e}'
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={'error': error_msg},
+        )
 
 
 @app.get('/api/select-file')
-def select_file(file: str):
+def select_file(file: str, request: Request):
     """
     Select a file.
 
@@ -250,12 +245,7 @@ def select_file(file: str):
     ```
     """
     try:
-        workspace_base = config.workspace_base
-        file_path = Path(workspace_base, file)
-        # The following will check if the file is within the workspace base and throw an exception if not
-        file_path.resolve().relative_to(Path(workspace_base).resolve())
-        with open(file_path, 'r') as selected_file:
-            content = selected_file.read()
+        content = request.state.session.agent_session.runtime.file_store.read(file)
     except Exception as e:
         logger.error(f'Error opening file {file}: {e}', exc_info=False)
         error_msg = f'Error opening file: {e}'
@@ -267,7 +257,7 @@ def select_file(file: str):
 
 
 @app.post('/api/upload-files')
-async def upload_files(files: list[UploadFile]):
+async def upload_file(request: Request, files: list[UploadFile]):
     """
     Upload files to the workspace.
 
@@ -277,13 +267,11 @@ async def upload_files(files: list[UploadFile]):
     ```
     """
     try:
-        workspace_base = config.workspace_base
         for file in files:
-            file_path = Path(workspace_base, file.filename)
-            # The following will check if the file is within the workspace base and throw an exception if not
-            file_path.resolve().relative_to(Path(workspace_base).resolve())
-            with open(file_path, 'wb') as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            file_contents = await file.read()
+            request.state.session.agent_session.runtime.file_store.write(
+                file.filename, file_contents
+            )
     except Exception as e:
         logger.error(f'Error saving files: {e}', exc_info=True)
         return JSONResponse(
@@ -293,10 +281,32 @@ async def upload_files(files: list[UploadFile]):
     return {'message': 'Files uploaded successfully', 'file_count': len(files)}
 
 
+@app.post('/api/submit-feedback')
+async def submit_feedback(request: Request, feedback: FeedbackDataModel):
+    """
+    Upload files to the workspace.
+
+    To upload files:
+    ```sh
+    curl -X POST -F "email=test@example.com" -F "token=abc" -F "feedback=positive" -F "permissions=private" -F "trajectory={}" http://localhost:3000/api/submit-feedback
+    ```
+    """
+    # Assuming the storage service is already configured in the backend
+    # and there is a function  to handle the storage.
+    try:
+        store_feedback(feedback)
+        return JSONResponse(
+            status_code=200, content={'message': 'Feedback submitted successfully'}
+        )
+    except Exception as e:
+        logger.error(f'Error submitting feedback: {e}')
+        return JSONResponse(
+            status_code=500, content={'error': 'Failed to submit feedback'}
+        )
+
+
 @app.get('/api/root_task')
-def get_root_task(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-):
+def get_root_task(request: Request):
     """
     Get root_task.
 
@@ -305,9 +315,7 @@ def get_root_task(
     curl -H "Authorization: Bearer <TOKEN>" http://localhost:3000/api/root_task
     ```
     """
-    sid = get_sid_from_token(credentials.credentials)
-    agent = agent_manager.sid_to_agent[sid]
-    controller = agent.controller
+    controller = request.state.session.agent_session.controller
     if controller is not None:
         state = controller.get_state()
         if state:
@@ -331,13 +339,4 @@ async def appconfig_defaults():
     return config.defaults_dict
 
 
-@app.get('/')
-async def docs_redirect():
-    """
-    Redirect to the API documentation.
-    """
-    response = RedirectResponse(url='/index.html')
-    return response
-
-
-app.mount('/', StaticFiles(directory='./frontend/dist'), name='dist')
+app.mount('/', StaticFiles(directory='./frontend/dist', html=True), name='dist')

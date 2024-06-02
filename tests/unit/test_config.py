@@ -46,7 +46,7 @@ def test_compat_env_to_config(monkeypatch, setup_env):
     # Use `monkeypatch` to set environment variables for this specific test
     monkeypatch.setenv('WORKSPACE_BASE', '/repos/opendevin/workspace')
     monkeypatch.setenv('LLM_API_KEY', 'sk-proj-rgMV0...')
-    monkeypatch.setenv('LLM_MODEL', 'gpt-3.5-turbo')
+    monkeypatch.setenv('LLM_MODEL', 'gpt-4o')
     monkeypatch.setenv('AGENT_MEMORY_MAX_THREADS', '4')
     monkeypatch.setenv('AGENT_MEMORY_ENABLED', 'True')
     monkeypatch.setenv('AGENT', 'CodeActAgent')
@@ -57,7 +57,7 @@ def test_compat_env_to_config(monkeypatch, setup_env):
     assert config.workspace_base == '/repos/opendevin/workspace'
     assert isinstance(config.llm, LLMConfig)
     assert config.llm.api_key == 'sk-proj-rgMV0...'
-    assert config.llm.model == 'gpt-3.5-turbo'
+    assert config.llm.model == 'gpt-4o'
     assert isinstance(config.agent, AgentConfig)
     assert isinstance(config.agent.memory_max_threads, int)
     assert config.agent.memory_max_threads == 4
@@ -210,3 +210,97 @@ def test_cache_dir_creation(default_config, tmpdir):
     default_config.cache_dir = str(tmpdir.join('test_cache'))
     finalize_config(default_config)
     assert os.path.exists(default_config.cache_dir)
+
+
+def test_api_keys_repr_str():
+    # Test LLMConfig
+    llm_config = LLMConfig(
+        api_key='my_api_key',
+        aws_access_key_id='my_access_key',
+        aws_secret_access_key='my_secret_key',
+    )
+    assert "api_key='******'" in repr(llm_config)
+    assert "aws_access_key_id='******'" in repr(llm_config)
+    assert "aws_secret_access_key='******'" in repr(llm_config)
+    assert "api_key='******'" in str(llm_config)
+    assert "aws_access_key_id='******'" in str(llm_config)
+    assert "aws_secret_access_key='******'" in str(llm_config)
+
+    # Check that no other attrs in LLMConfig have 'key' or 'token' in their name
+    # This will fail when new attrs are added, and attract attention
+    known_key_token_attrs_llm = [
+        'api_key',
+        'aws_access_key_id',
+        'aws_secret_access_key',
+        'input_cost_per_token',
+        'output_cost_per_token',
+    ]
+    for attr_name in dir(LLMConfig):
+        if (
+            not attr_name.startswith('__')
+            and attr_name not in known_key_token_attrs_llm
+        ):
+            assert (
+                'key' not in attr_name.lower()
+            ), f"Unexpected attribute '{attr_name}' contains 'key' in LLMConfig"
+            assert (
+                'token' not in attr_name.lower() or 'tokens' in attr_name.lower()
+            ), f"Unexpected attribute '{attr_name}' contains 'token' in LLMConfig"
+
+    # Test AgentConfig
+    # No attrs in AgentConfig have 'key' or 'token' in their name
+    agent_config = AgentConfig(
+        name='my_agent', memory_enabled=True, memory_max_threads=4
+    )
+    for attr_name in dir(AgentConfig):
+        if not attr_name.startswith('__'):
+            assert (
+                'key' not in attr_name.lower()
+            ), f"Unexpected attribute '{attr_name}' contains 'key' in AgentConfig"
+            assert (
+                'token' not in attr_name.lower() or 'tokens' in attr_name.lower()
+            ), f"Unexpected attribute '{attr_name}' contains 'token' in AgentConfig"
+
+    # Test AppConfig
+    app_config = AppConfig(
+        llm=llm_config,
+        agent=agent_config,
+        e2b_api_key='my_e2b_api_key',
+        github_token='my_github_token',
+    )
+    assert "e2b_api_key='******'" in repr(app_config)
+    assert "github_token='******'" in repr(app_config)
+    assert "e2b_api_key='******'" in str(app_config)
+    assert "github_token='******'" in str(app_config)
+
+    # Check that no other attrs in AppConfig have 'key' or 'token' in their name
+    # This will fail when new attrs are added, and attract attention
+    known_key_token_attrs_app = ['e2b_api_key', 'github_token']
+    for attr_name in dir(AppConfig):
+        if (
+            not attr_name.startswith('__')
+            and attr_name not in known_key_token_attrs_app
+        ):
+            assert (
+                'key' not in attr_name.lower()
+            ), f"Unexpected attribute '{attr_name}' contains 'key' in AppConfig"
+            assert (
+                'token' not in attr_name.lower() or 'tokens' in attr_name.lower()
+            ), f"Unexpected attribute '{attr_name}' contains 'token' in AppConfig"
+
+
+def test_max_iterations_and_max_budget_per_task_from_toml(temp_toml_file):
+    temp_toml = """
+[core]
+max_iterations = 100
+max_budget_per_task = 4.0
+"""
+
+    config = AppConfig()
+    with open(temp_toml_file, 'w') as f:
+        f.write(temp_toml)
+
+    load_from_toml(config, temp_toml_file)
+
+    assert config.max_iterations == 100
+    assert config.max_budget_per_task == 4.0

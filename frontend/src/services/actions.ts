@@ -1,6 +1,6 @@
 import { setScreenshotSrc, setUrl } from "#/state/browserSlice";
-import { addAssistantMessage } from "#/state/chatSlice";
-import { setCode, updatePath } from "#/state/codeSlice";
+import { addAssistantMessage, addUserMessage } from "#/state/chatSlice";
+import { setCode, setActiveFilepath } from "#/state/codeSlice";
 import { appendInput } from "#/state/commandSlice";
 import { appendJupyterInput } from "#/state/jupyterSlice";
 import { setRootTask } from "#/state/taskSlice";
@@ -16,19 +16,27 @@ const messageActions = {
     const { url, screenshotSrc } = message.args;
     store.dispatch(setUrl(url));
     store.dispatch(setScreenshotSrc(screenshotSrc));
+    store.dispatch(addAssistantMessage(message.message));
   },
   [ActionType.BROWSE_INTERACTIVE]: (message: ActionMessage) => {
+    if (message.args.thought) {
+      store.dispatch(addAssistantMessage(message.args.thought));
+    }
     const { url, screenshotSrc } = message.args;
     store.dispatch(setUrl(url));
     store.dispatch(setScreenshotSrc(screenshotSrc));
   },
   [ActionType.WRITE]: (message: ActionMessage) => {
     const { path, content } = message.args;
-    store.dispatch(updatePath(path));
+    store.dispatch(setActiveFilepath(path));
     store.dispatch(setCode(content));
   },
   [ActionType.MESSAGE]: (message: ActionMessage) => {
-    store.dispatch(addAssistantMessage(message.args.content));
+    if (message.source === "user") {
+      store.dispatch(addUserMessage(message.args.content));
+    } else {
+      store.dispatch(addAssistantMessage(message.args.content));
+    }
   },
   [ActionType.FINISH]: (message: ActionMessage) => {
     store.dispatch(addAssistantMessage(message.message));

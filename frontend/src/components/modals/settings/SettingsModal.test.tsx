@@ -11,22 +11,24 @@ import {
   saveSettings,
   getDefaultSettings,
 } from "#/services/settings";
-import { initializeAgent } from "#/services/agent";
-import { fetchAgents, fetchModels } from "#/api";
+import Session from "#/services/session";
+import { fetchAgents, fetchModels } from "#/services/options";
 import SettingsModal from "./SettingsModal";
 
 const toastSpy = vi.spyOn(toast, "settingsChanged");
 const i18nSpy = vi.spyOn(i18next, "changeLanguage");
+const startNewSessionSpy = vi.spyOn(Session, "startNewSession");
+vi.spyOn(Session, "isConnected").mockImplementation(() => true);
 
 vi.mock("#/services/settings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("#/services/settings")>()),
   getSettings: vi.fn().mockReturnValue({
-    LLM_MODEL: "gpt-3.5-turbo",
+    LLM_MODEL: "gpt-4o",
     AGENT: "MonologueAgent",
     LANGUAGE: "en",
   }),
   getDefaultSettings: vi.fn().mockReturnValue({
-    LLM_MODEL: "gpt-3.5-turbo",
+    LLM_MODEL: "gpt-4o",
     AGENT: "CodeActAgent",
     LANGUAGE: "en",
     LLM_API_KEY: "",
@@ -35,12 +37,8 @@ vi.mock("#/services/settings", async (importOriginal) => ({
   saveSettings: vi.fn(),
 }));
 
-vi.mock("#/services/agent", async () => ({
-  initializeAgent: vi.fn(),
-}));
-
-vi.mock("#/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("#/api")>()),
+vi.mock("#/services/options", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#/services/options")>()),
   fetchModels: vi
     .fn()
     .mockResolvedValue(Promise.resolve(["model1", "model2", "model3"])),
@@ -83,7 +81,7 @@ describe("SettingsModal", () => {
   it("should disabled the save button if the settings contain a missing value", async () => {
     const onOpenChangeMock = vi.fn();
     (getSettings as Mock).mockReturnValueOnce({
-      LLM_MODEL: "gpt-3.5-turbo",
+      LLM_MODEL: "gpt-4o",
       AGENT: "",
     });
     await act(async () =>
@@ -99,7 +97,7 @@ describe("SettingsModal", () => {
 
   describe("onHandleSave", () => {
     const initialSettings: Settings = {
-      LLM_MODEL: "gpt-3.5-turbo",
+      LLM_MODEL: "gpt-4o",
       AGENT: "MonologueAgent",
       LANGUAGE: "en",
       LLM_API_KEY: "sk-...",
@@ -162,7 +160,7 @@ describe("SettingsModal", () => {
         userEvent.click(saveButton);
       });
 
-      expect(initializeAgent).toHaveBeenCalled();
+      expect(startNewSessionSpy).toHaveBeenCalled();
     });
 
     it("should display a toast for every change", async () => {

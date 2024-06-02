@@ -3,6 +3,11 @@
 
 This folder contains evaluation harness we built on top of the original [SWE-Bench benchmark](https://www.swebench.com/) ([paper](https://arxiv.org/abs/2310.06770)). We create [a fork of SWE-Bench](https://github.com/OpenDevin/OD-SWE-bench.git) mostly build on top of [the original repo](https://github.com/princeton-nlp/SWE-bench) and [containerized](#opendevin-swe-bench-docker-image) it for easy evaluation.
 
+## Setup Environment
+
+Please follow [this document](https://github.com/OpenDevin/OpenDevin/blob/main/Development.md) to setup local develop environment for OpenDevin.
+
+
 ## OpenDevin SWE-Bench Docker Image
 
 In [OpenDevin-SWE-Bench fork](https://github.com/OpenDevin/OD-SWE-bench.git) (mostly from [original repo](https://github.com/princeton-nlp/SWE-bench) with some fixes), we try to pre-build the **testbed** (i.e., code of the repository we want the agent to edit) AND the **conda environment**, so that in evaluation (inference) time, we can directly leverage existing environments for effecienct evaluation.
@@ -10,7 +15,7 @@ In [OpenDevin-SWE-Bench fork](https://github.com/OpenDevin/OD-SWE-bench.git) (mo
 **We pack everything you need for SWE-Bench evaluation into one, gigantic, docker image.** To use it:
 
 ```bash
-docker pull ghcr.io/opendevin/eval-swe-bench:full-v1.0
+docker pull ghcr.io/opendevin/eval-swe-bench:full-v1.2.1
 ```
 
 The Docker image contains several important directories:
@@ -40,11 +45,13 @@ max_iterations = 100
 cache_dir = "/tmp/cache"
 sandbox_container_image = "ghcr.io/opendevin/sandbox:latest"
 sandbox_type = "ssh"
-use_host_network = true
 ssh_hostname = "localhost"
 sandbox_timeout = 120
+
 # SWEBench eval specific
+use_host_network = false
 run_as_devin = false
+enable_auto_lint = true
 
 # TODO: Change these to the model you want to evaluate
 [eval_gpt4_1106_preview]
@@ -61,24 +68,59 @@ temperature = 0.0
 
 ## Test if your environment works
 
+Make sure your Docker daemon is running, and you have pulled the `eval-swe-bench:full-v1.2`
+docker image. Then run this python script:
+
 ```bash
-python3 evaluation/swe_bench/swe_env_box.py
+poetry run python evaluation/swe_bench/swe_env_box.py
 ```
 
-If you get to the interactive shell successfully, it means success!
+If you get to the interactive shell successfully, it means your environment works!
+If you see an error, please make sure your `config.toml` contains all
+`SWEBench eval specific` settings as shown in the previous section.
 
 ## Run Inference on SWE-Bench Instances
 
 ```bash
-./evaluation/swe_bench/scripts/run_infer.sh eval_gpt4_1106_preview
+./evaluation/swe_bench/scripts/run_infer.sh [model_config] [agent] [eval_limit]
+# e.g., ./evaluation/swe_bench/scripts/run_infer.sh eval_gpt4_1106_preview CodeActAgent 300
 ```
 
-You can replace `eval_gpt4_1106_preview` with any model you setted up in `config.toml`.
+where `model_config` is mandatory, while `agent` and `eval_limit` are optional.
 
+`model_config`, e.g. `eval_gpt4_1106_preview`, is the config group name for your
+LLM settings, as defined in your `config.toml`.
+
+`agent`, e.g. `CodeActAgent`, is the name of the agent for benchmarks, defaulting
+to `CodeActAgent`.
+
+`eval_limit`, e.g. `10`, limits the evaluation to the first `eval_limit` instances. By
+default, the script evaluates the entire SWE-bench_Lite test set (300 issues). Note:
+in order to use `eval_limit`, you must also set `agent`.
+
+Let's say you'd like to run 10 instances using `eval_gpt4_1106_preview` and CodeActAgent,
+then your command would be:
+
+```bash
+./evaluation/swe_bench/scripts/run_infer.sh eval_gpt4_1106_preview CodeActAgent 10
+```
+
+If you would like to specify a list of tasks you'd like to benchmark on, you could
+create a `config.toml` under `./evaluation/swe_bench/` folder, and put a list
+attribute named `selected_ids`, e.g.
+
+```toml
+selected_ids = ['sphinx-doc__sphinx-8721', 'sympy__sympy-14774', 'scikit-learn__scikit-learn-10508']
+```
+
+Then only these tasks (rows whose `instance_id` is in the above list) will be evaluated.
+In this case, `eval_limit` option applies to tasks that are in the `selected_ids` list.
+
+After running the inference, you will obtain a `output.jsonl` (by default it will be saved to `evaluation/evaluation_outputs`).
 
 ## Evaluate Generated Patches
 
-After running the inference described in the previous section, you will obtain a `output.jsonl` (by default it will save to `evaluation/evaluation_outputs`). Then you can run this one line script to evaluate generated patches, and produce a fine-grained report:
+With `output.jsonl` file, you can run `eval_infer.sh` to evaluate generated patches, and produce a fine-grained report.
 
 If you want to evaluate existing results, you should first run this to clone existing outputs
 
@@ -144,6 +186,15 @@ It will contains an additional field `fine_grained_report` (see example below) c
 ```
 
 Please refer to [EVAL_PATCH.md](./EVAL_PATCH.md) if you want to learn more about how to evaluate patches that are already generated (e.g., not by OpenDevin).
+
+## View Result Summary
+
+If you just want to know the resolve rate, and/or a summary of what tests pass and what don't, you could run
+
+```bash
+poetry run python ./evaluation/swe_bench/scripts/summarise_results.py <path_to_output_merged_jsonl_file>
+# e.g. poetry run python ./evaluation/swe_bench/scripts/summarise_results.py ./evaluation/evaluation_outputs/outputs/swe_bench_lite/CodeActSWEAgent/gpt-4o-2024-05-13_maxiter_50_N_v1.5-no-hint/output.merged.jsonl
+```
 
 ## Submit your evaluation results
 

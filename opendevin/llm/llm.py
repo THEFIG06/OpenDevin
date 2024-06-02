@@ -11,6 +11,7 @@ from litellm.exceptions import (
     RateLimitError,
     ServiceUnavailableError,
 )
+from litellm.types.utils import CostPerToken
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -21,8 +22,11 @@ from tenacity import (
 from opendevin.core.config import config
 from opendevin.core.logger import llm_prompt_logger, llm_response_logger
 from opendevin.core.logger import opendevin_logger as logger
+from opendevin.core.metrics import Metrics
 
 __all__ = ['LLM']
+
+message_separator = '\n\n----------\n\n'
 
 
 class LLM:
@@ -56,6 +60,7 @@ class LLM:
         max_input_tokens=None,
         max_output_tokens=None,
         llm_config=None,
+        metrics=None,
     ):
         """
         Initializes the LLM. If LLMConfig is passed, its values will be the fallback.
@@ -75,7 +80,7 @@ class LLM:
             custom_llm_provider (str, optional): A custom LLM provider. Defaults to LLM_CUSTOM_LLM_PROVIDER.
             llm_timeout (int, optional): The maximum time to wait for a response in seconds. Defaults to LLM_TIMEOUT.
             llm_temperature (float, optional): The temperature for LLM sampling. Defaults to LLM_TEMPERATURE.
-
+            metrics (Metrics, optional): The metrics object to use. Defaults to None.
         """
         if llm_config is None:
             llm_config = config.llm
@@ -110,6 +115,7 @@ class LLM:
             if max_output_tokens is not None
             else llm_config.max_output_tokens
         )
+        metrics = metrics if metrics is not None else Metrics()
 
         logger.info(f'Initializing LLM with model: {model}')
         self.model_name = model
@@ -120,11 +126,12 @@ class LLM:
         self.max_output_tokens = max_output_tokens
         self.llm_timeout = llm_timeout
         self.custom_llm_provider = custom_llm_provider
+        self.metrics = metrics
 
         # litellm actually uses base Exception here for unknown model
         self.model_info = None
         try:
-            self.model_info = litellm.get_model_info(self.model_name)
+            self.model_info = litellm.get_model_info(self.model_name.split(':')[0])
         # noinspection PyBroadException
         except Exception:
             logger.warning(f'Could not get model info for {self.model_name}')
@@ -182,7 +189,7 @@ class LLM:
                 messages = args[1]
             debug_message = ''
             for message in messages:
-                debug_message += '\n\n----------\n\n' + message['content']
+                debug_message += message_separator + message['content']
             llm_prompt_logger.debug(debug_message)
             resp = completion_unwrapped(*args, **kwargs)
             message_back = resp['choices'][0]['message']['content']
@@ -197,6 +204,30 @@ class LLM:
         Decorator for the litellm completion function.
         """
         return self._completion
+
+    def do_completion(self, *args, **kwargs):
+        """
+        Wrapper for the litellm completion function.
+
+        Check the complete documentation at https://litellm.vercel.app/docs/completion
+        """
+        resp = self._completion(*args, **kwargs)
+        self.post_completion(resp)
+        return resp
+
+    def post_completion(self, response: str) -> None:
+        """
+        Post-process the completion response.
+        """
+        try:
+            cur_cost = self.completion_cost(response)
+        except Exception:
+            cur_cost = 0
+        logger.info(
+            'Cost: %.2f USD | Accumulated Cost: %.2f USD',
+            cur_cost,
+            self.metrics.accumulated_cost,
+        )
 
     def get_token_count(self, messages):
         """
@@ -218,12 +249,9 @@ class LLM:
             boolean: True if executing a local model.
         """
         if self.base_url is not None:
-            if (
-                'localhost' not in self.base_url
-                and '127.0.0.1' not in self.base_url
-                and '0.0.0.0' not in self.base_url
-            ):
-                return True
+            for substring in ['localhost', '127.0.0.1' '0.0.0.0']:
+                if substring in self.base_url:
+                    return True
         elif self.model_name is not None:
             if self.model_name.startswith('ollama'):
                 return True
@@ -232,6 +260,7 @@ class LLM:
     def completion_cost(self, response):
         """
         Calculate the cost of a completion response based on the model.  Local models are treated as free.
+        Add the current cost into total cost in metrics.
 
         Args:
             response (list): A response from a model invocation.
@@ -239,9 +268,24 @@ class LLM:
         Returns:
             number: The cost of the response.
         """
+        extra_kwargs = {}
+        if (
+            config.llm.input_cost_per_token is not None
+            and config.llm.output_cost_per_token is not None
+        ):
+            cost_per_token = CostPerToken(
+                input_cost_per_token=config.llm.input_cost_per_token,
+                output_cost_per_token=config.llm.output_cost_per_token,
+            )
+            logger.info(f'Using custom cost per token: {cost_per_token}')
+            extra_kwargs['custom_cost_per_token'] = cost_per_token
+
         if not self.is_local():
             try:
-                cost = litellm_completion_cost(completion_response=response)
+                cost = litellm_completion_cost(
+                    completion_response=response, **extra_kwargs
+                )
+                self.metrics.add_cost(cost)
                 return cost
             except Exception:
                 logger.warning('Cost calculation not supported for this model.')
@@ -253,3 +297,6 @@ class LLM:
         elif self.base_url:
             return f'LLM(model={self.model_name}, base_url={self.base_url})'
         return f'LLM(model={self.model_name})'
+
+    def __repr__(self):
+        return str(self)
