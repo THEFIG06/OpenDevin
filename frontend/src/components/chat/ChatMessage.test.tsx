@@ -3,21 +3,26 @@ import { describe, it, expect } from "vitest";
 import React from "react";
 import ChatMessage from "./ChatMessage";
 
-// avoid typing side-effect
-vi.mock("#/hooks/useTyping", () => ({
-  useTyping: vi.fn((text: string) => text),
-}));
-
 describe("Message", () => {
   it("should render a user message", () => {
-    render(<ChatMessage message={{ sender: "user", content: "Hello" }} />);
+    render(
+      <ChatMessage
+        message={{ sender: "user", content: "Hello" }}
+        isLastMessage={false}
+      />,
+    );
 
     expect(screen.getByTestId("message")).toBeInTheDocument();
     expect(screen.getByTestId("message")).toHaveClass("self-end"); // user message should be on the right side
   });
 
   it("should render an assistant message", () => {
-    render(<ChatMessage message={{ sender: "assistant", content: "Hi" }} />);
+    render(
+      <ChatMessage
+        message={{ sender: "assistant", content: "Hi" }}
+        isLastMessage={false}
+      />,
+    );
 
     expect(screen.getByTestId("message")).toBeInTheDocument();
     expect(screen.getByTestId("message")).not.toHaveClass("self-end"); // assistant message should be on the left side
@@ -30,6 +35,7 @@ describe("Message", () => {
           sender: "user",
           content: "```js\nconsole.log('Hello')\n```",
         }}
+        isLastMessage={false}
       />,
     );
 
