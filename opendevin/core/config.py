@@ -111,6 +111,12 @@ class LLMConfig:
                 ret[k] = '******' if v else None
         return ret
 
+    def set_missing_attributes(self):
+        """Set any missing attributes to their default values."""
+        for field_name, field_obj in self.__dataclass_fields__.items():
+            if not hasattr(self, field_name):
+                setattr(self, field_name, field_obj.default)
+
 
 @dataclass
 class AgentConfig:
@@ -148,6 +154,9 @@ class SandboxConfig(metaclass=Singleton):
         initialize_plugins: Whether to initialize plugins.
         update_source_code: Whether to update the source code in the EventStreamRuntime.
             Used for development of EventStreamRuntime.
+        browsergym_eval_env: The BrowserGym environment to use for evaluation.
+            Default is None for general purpose browsing. Check evaluation/miniwob and evaluation/webarena for examples.
+
     """
 
     box_type: str = 'ssh'
@@ -164,6 +173,7 @@ class SandboxConfig(metaclass=Singleton):
     use_host_network: bool = False
     initialize_plugins: bool = True
     update_source_code: bool = False
+    browsergym_eval_env: str | None = None
 
     def defaults_to_dict(self) -> dict:
         """Serialize fields to a dict for the frontend, including type hints, defaults, and whether it's optional."""
@@ -390,6 +400,11 @@ def load_from_env(cfg: AppConfig, env_or_toml_dict: dict | MutableMapping[str, s
             elif env_var_name in env_or_toml_dict:
                 # convert the env var to the correct type and set it
                 value = env_or_toml_dict[env_var_name]
+
+                # skip empty config values (fall back to default)
+                if not value:
+                    continue
+
                 try:
                     # if it's an optional type, get the non-None type
                     if get_origin(field_type) is UnionType:
