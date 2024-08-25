@@ -1,14 +1,10 @@
-# ToolQA Evaluation with OpenDevin
+# ToolQA Evaluation with OpenHands
 
 This folder contains an evaluation harness we built on top of the original [ToolQA](https://github.com/night-chen/ToolQA) ([paper](https://arxiv.org/pdf/2306.13304)).
 
-## Setup Environment
+## Setup Environment and LLM Configuration
 
-Please follow [this document](https://github.com/OpenDevin/OpenDevin/blob/main/Development.md) to setup local development environment for OpenDevin.
-
-## Configure OpenDevin and your LLM
-
-Run `make setup-config` to set up the `config.toml` file if it does not exist at the root of the workspace.
+Please follow instruction [here](../README.md#setup) to setup your local development environment and LLM.
 
 ## Run Inference on ToolQA Instances
 
@@ -23,7 +19,7 @@ where `model_config` is mandatory, while all other arguments are optional.
 `model_config`, e.g. `llm`, is the config group name for your
 LLM settings, as defined in your `config.toml`.
 
-`git-version`, e.g. `HEAD`, is the git commit hash of the OpenDevin version you would
+`git-version`, e.g. `HEAD`, is the git commit hash of the OpenHands version you would
 like to evaluate. It could also be a release tag like `0.6.2`.
 
 `agent`, e.g. `CodeActAgent`, is the name of the agent for benchmarks, defaulting

@@ -1,8 +1,9 @@
 import os
+from unittest.mock import patch
 
 import pytest
 
-from opendevin.runtime.plugins.agent_skills.aider import Linter, LintResult
+from openhands.runtime.plugins.agent_skills.utils.aider import Linter, LintResult
 
 
 @pytest.fixture
@@ -64,6 +65,48 @@ def linter(tmp_path):
     return Linter(root=tmp_path)
 
 
+@pytest.fixture
+def temp_typescript_file_errors(tmp_path):
+    # Fixture to create a temporary TypeScript file with errors
+    temp_name = os.path.join(tmp_path, 'lint-test.ts')
+    with open(temp_name, 'w', encoding='utf-8') as tmp_file:
+        tmp_file.write("""function foo() {
+    console.log("Hello, World!")
+foo()
+""")
+    tmp_file.close()
+    yield temp_name
+    os.remove(temp_name)
+
+
+@pytest.fixture
+def temp_typescript_file_errors_semicolon(tmp_path):
+    # Fixture to create a temporary TypeScript file with missing semicolon
+    temp_name = os.path.join(tmp_path, 'lint-test.ts')
+    with open(temp_name, 'w', encoding='utf-8') as tmp_file:
+        tmp_file.write("""function printHelloWorld() {
+    console.log('Hello World')
+}""")
+    tmp_file.close()
+    yield temp_name
+    os.remove(temp_name)
+
+
+@pytest.fixture
+def temp_typescript_file_correct(tmp_path):
+    # Fixture to create a temporary TypeScript file with correct code
+    temp_name = os.path.join(tmp_path, 'lint-test.ts')
+    with open(temp_name, 'w', encoding='utf-8') as tmp_file:
+        tmp_file.write("""function foo(): void {
+  console.log("Hello, World!");
+}
+foo();
+""")
+    tmp_file.close()
+    yield temp_name
+    os.remove(temp_name)
+
+
 def test_get_rel_fname(linter, temp_file, tmp_path):
     # Test get_rel_fname method
     rel_fname = linter.get_rel_fname(temp_file)
@@ -108,7 +151,7 @@ def test_py_lint_fail(linter, temp_file):
 
 
 def test_basic_lint(temp_file):
-    from opendevin.runtime.plugins.agent_skills.aider.linter import basic_lint
+    from openhands.runtime.plugins.agent_skills.utils.aider.linter import basic_lint
 
     poorly_formatted_code = """
         def foo()
@@ -119,12 +162,12 @@ def test_basic_lint(temp_file):
     result = basic_lint(temp_file, poorly_formatted_code)
 
     assert isinstance(result, LintResult)
-    assert result.text == f'{temp_file}:2'
+    assert result.text.startswith(f'{temp_file}:2:9')
     assert 2 in result.lines
 
 
 def test_basic_lint_fail_returns_text_and_lines(temp_file):
-    from opendevin.runtime.plugins.agent_skills.aider.linter import basic_lint
+    from openhands.runtime.plugins.agent_skills.utils.aider.linter import basic_lint
 
     poorly_formatted_code = """
         def foo()
@@ -136,12 +179,14 @@ def test_basic_lint_fail_returns_text_and_lines(temp_file):
     result = basic_lint(temp_file, poorly_formatted_code)
 
     assert isinstance(result, LintResult)
-    assert result.text == f'{temp_file}:2'
+    assert result.text.startswith(f'{temp_file}:2:9')
     assert 2 in result.lines
 
 
 def test_lint_python_compile(temp_file):
-    from opendevin.runtime.plugins.agent_skills.aider.linter import lint_python_compile
+    from openhands.runtime.plugins.agent_skills.utils.aider.linter import (
+        lint_python_compile,
+    )
 
     result = lint_python_compile(temp_file, "print('Hello, World!')\n")
 
@@ -149,7 +194,9 @@ def test_lint_python_compile(temp_file):
 
 
 def test_lint_python_compile_fail_returns_text_and_lines(temp_file):
-    from opendevin.runtime.plugins.agent_skills.aider.linter import lint_python_compile
+    from openhands.runtime.plugins.agent_skills.utils.aider.linter import (
+        lint_python_compile,
+    )
 
     poorly_formatted_code = """
         def foo()
@@ -195,3 +242,24 @@ def test_lint_fail_ruby(linter, temp_ruby_file_errors):
 def test_lint_fail_ruby_no_parentheses(linter, temp_ruby_file_errors_parentheses):
     errors = linter.lint(temp_ruby_file_errors_parentheses)
     assert errors is not None
+
+
+def test_lint_pass_typescript(linter, temp_typescript_file_correct):
+    if linter.ts_installed:
+        result = linter.lint(temp_typescript_file_correct)
+        assert result is None
+
+
+def test_lint_fail_typescript(linter, temp_typescript_file_errors):
+    if linter.ts_installed:
+        errors = linter.lint(temp_typescript_file_errors)
+        assert errors is not None
+
+
+def test_lint_fail_typescript_missing_semicolon(
+    linter, temp_typescript_file_errors_semicolon
+):
+    if linter.ts_installed:
+        with patch.dict(os.environ, {'ENABLE_AUTO_LINT': 'True'}):
+            errors = linter.lint(temp_typescript_file_errors_semicolon)
+            assert errors is not None

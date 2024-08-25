@@ -2,9 +2,9 @@
 
 This folder contains evaluation harness for evaluating agents on the [GAIA benchmark](https://arxiv.org/abs/2311.12983).
 
-## Configure OpenDevin and your LLM
+## Setup Environment and LLM Configuration
 
-Create a `config.toml` file if it does not exist at the root of the workspace. Please check [README.md](../../README.md) for how to set this up.
+Please follow instruction [here](../README.md#setup) to setup your local development environment and LLM.
 
 ## Run the evaluation
 We are using the GAIA dataset hosted on [Hugging Face](https://huggingface.co/datasets/gaia-benchmark/GAIA).
@@ -22,7 +22,7 @@ where `model_config` is mandatory, while `git-version`, `agent`, `eval_limit` an
 - `model_config`, e.g. `eval_gpt4_1106_preview`, is the config group name for your
 LLM settings, as defined in your `config.toml`, defaulting to `gpt-3.5-turbo`
 
-- `git-version`, e.g. `HEAD`, is the git commit hash of the OpenDevin version you would
+- `git-version`, e.g. `HEAD`, is the git commit hash of the OpenHands version you would
 like to evaluate. It could also be a release tag like `0.6.2`.
 
 - `agent`, e.g. `CodeActAgent`, is the name of the agent for benchmarks, defaulting

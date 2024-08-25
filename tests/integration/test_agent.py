@@ -5,17 +5,17 @@ import subprocess
 
 import pytest
 
-from opendevin.controller.state.state import State
-from opendevin.core.config import AppConfig, SandboxConfig, load_from_env
-from opendevin.core.main import run_controller
-from opendevin.core.schema import AgentState
-from opendevin.events.action import (
+from openhands.controller.state.state import State
+from openhands.core.config import AppConfig, SandboxConfig, load_from_env
+from openhands.core.main import run_controller
+from openhands.core.schema import AgentState
+from openhands.events.action import (
     AgentFinishAction,
     AgentRejectAction,
 )
-from opendevin.events.observation.browse import BrowserOutputObservation
-from opendevin.events.observation.delegate import AgentDelegateObservation
-from opendevin.runtime import get_runtime_cls
+from openhands.events.observation.browse import BrowserOutputObservation
+from openhands.events.observation.delegate import AgentDelegateObservation
+from openhands.runtime import get_runtime_cls
 
 TEST_RUNTIME = os.getenv('TEST_RUNTIME')
 assert TEST_RUNTIME in ['eventstream', 'server']
@@ -29,7 +29,6 @@ CONFIG = AppConfig(
     workspace_base=os.getenv('WORKSPACE_BASE'),
     workspace_mount_path=os.getenv('WORKSPACE_MOUNT_PATH'),
     sandbox=SandboxConfig(
-        box_type=os.getenv('SANDBOX_BOX_TYPE', 'ssh'),
         use_host_network=True,
     ),
 )
@@ -80,8 +79,7 @@ def validate_final_state(final_state: State | None, test_name: str):
     (
         os.getenv('DEFAULT_AGENT') == 'CodeActAgent'
         or os.getenv('DEFAULT_AGENT') == 'CodeActSWEAgent'
-    )
-    and os.getenv('SANDBOX_BOX_TYPE', '').lower() != 'ssh',
+    ),
     reason='CodeActAgent/CodeActSWEAgent only supports ssh sandbox which is stateful',
 )
 @pytest.mark.skipif(
@@ -118,17 +116,12 @@ def test_write_simple_script(current_test_name: str) -> None:
     (
         os.getenv('DEFAULT_AGENT') == 'CodeActAgent'
         or os.getenv('DEFAULT_AGENT') == 'CodeActSWEAgent'
-    )
-    and os.getenv('SANDBOX_BOX_TYPE', '').lower() != 'ssh',
+    ),
     reason='CodeActAgent/CodeActSWEAgent only supports ssh sandbox which is stateful',
 )
 @pytest.mark.skipif(
     os.getenv('DEFAULT_AGENT') == 'PlannerAgent',
     reason='We only keep basic tests for PlannerAgent',
-)
-@pytest.mark.skipif(
-    os.getenv('SANDBOX_BOX_TYPE') == 'local',
-    reason='local sandbox shows environment-dependent absolute path for pwd command',
 )
 def test_edits(current_test_name: str):
     # Copy workspace artifacts to workspace_base location
@@ -163,10 +156,6 @@ Enjoy!
     and os.getenv('DEFAULT_AGENT') != 'CodeActSWEAgent',
     reason='currently only CodeActAgent and CodeActSWEAgent have IPython (Jupyter) execution by default',
 )
-@pytest.mark.skipif(
-    os.getenv('SANDBOX_BOX_TYPE') != 'ssh',
-    reason='Currently, only ssh sandbox supports stateful tasks',
-)
 def test_ipython(current_test_name: str):
     # Execute the task
     task = "Use Jupyter IPython to write a text file containing 'hello world' to '/workspace/test.txt'. Do not ask me for confirmation at any point."
@@ -191,10 +180,6 @@ def test_ipython(current_test_name: str):
     os.getenv('DEFAULT_AGENT') != 'ManagerAgent',
     reason='Currently, only ManagerAgent supports task rejection',
 )
-@pytest.mark.skipif(
-    os.getenv('SANDBOX_BOX_TYPE') == 'local',
-    reason='FIXME: local sandbox does not capture stderr',
-)
 def test_simple_task_rejection(current_test_name: str):
     # Give an impossible task to do: cannot write a commit message because
     # the workspace is not a git repo
@@ -210,10 +195,6 @@ def test_simple_task_rejection(current_test_name: str):
     os.getenv('DEFAULT_AGENT') != 'CodeActAgent'
     and os.getenv('DEFAULT_AGENT') != 'CodeActSWEAgent',
     reason='currently only CodeActAgent and CodeActSWEAgent have IPython (Jupyter) execution by default',
-)
-@pytest.mark.skipif(
-    os.getenv('SANDBOX_BOX_TYPE') != 'ssh',
-    reason='Currently, only ssh sandbox supports stateful tasks',
 )
 def test_ipython_module(current_test_name: str):
     # Execute the task
@@ -245,8 +226,7 @@ def test_ipython_module(current_test_name: str):
     (
         os.getenv('DEFAULT_AGENT') == 'CodeActAgent'
         or os.getenv('DEFAULT_AGENT') == 'CodeActSWEAgent'
-    )
-    and os.getenv('SANDBOX_BOX_TYPE', '').lower() != 'ssh',
+    ),
     reason='CodeActAgent/CodeActSWEAgent only supports ssh sandbox which is stateful',
 )
 def test_browse_internet(http_server, current_test_name: str):
@@ -267,6 +247,6 @@ def test_browse_internet(http_server, current_test_name: str):
         last_observation, (BrowserOutputObservation, AgentDelegateObservation)
     )
     if isinstance(last_observation, BrowserOutputObservation):
-        assert 'OpenDevin is all you need!' in last_observation.content
+        assert 'OpenHands is all you need!' in last_observation.content
     elif isinstance(last_observation, AgentDelegateObservation):
-        assert 'OpenDevin is all you need!' in last_observation.outputs['content']
+        assert 'OpenHands is all you need!' in last_observation.outputs['content']

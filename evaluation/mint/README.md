@@ -2,9 +2,11 @@
 
 This folder contains the evaluation harness for the [MINT benchmark](https://arxiv.org/abs/2309.10691) on LLMs' ability to solve tasks with multi-turn interactions.
 
-## Configure OpenDevin and LM
+We support evaluation of the [Eurus subset focus on math and code reasoning](https://arxiv.org/abs/2404.02078), including MATH, MMLU, TheoremQA, HumanEval, MBPP.
 
-Create a `config.toml` file if it does not exist at the root of the workspace. Please check [README.md](../../README.md) for how to set this up.
+## Setup Environment and LLM Configuration
+
+Please follow instruction [here](../README.md#setup) to setup your local development environment and LLM.
 
 ## Start the evaluation
 
@@ -20,7 +22,7 @@ where `model_config` is mandatory, while others are optional.
 
 - `model_config`, e.g. `eval_gpt4_1106_preview`, is the config group name for your LLM settings, as defined in your `config.toml`.
 
-- `git-version`, e.g. `HEAD`, is the git commit hash of the OpenDevin version you would
+- `git-version`, e.g. `HEAD`, is the git commit hash of the OpenHands version you would
 like to evaluate. It could also be a release tag like `0.6.2`.
 
 - `subset`, e.g. `math`, is the subset of the MINT benchmark to evaluate on, defaulting to `math`. It can be either: `math`, `gsm8k`, `mmlu`, `theoremqa`, `mbpp`,`humaneval`.

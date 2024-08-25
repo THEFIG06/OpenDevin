@@ -1,6 +1,6 @@
 import pytest
 
-from opendevin.runtime.utils.bash import split_bash_commands
+from openhands.runtime.utils.bash import split_bash_commands
 
 
 def test_split_commands_util():
@@ -100,30 +100,6 @@ EOF
 echo "Done"
 """
     expected_output = ['cat <<EOF\nmultiline\ntext\nEOF', 'echo "Done"']
-    assert split_bash_commands(input_commands) == expected_output
-
-
-def test_jupyter_heredoc():
-    """This tests specifically test the behavior of the bash parser
-    when the input is a heredoc for a Jupyter cell (used in ServerRuntime).
-
-    It will failed to parse bash commands AND fall back to the original input,
-    which won't cause issues in actual execution.
-
-    [input]: cat > /tmp/opendevin_jupyter_temp.py <<'EOL'
-    print('Hello, `World`!
-    ')
-    EOL
-    [warning]: here-document at line 0 delimited by end-of-file (wanted "'EOL'") (position 75)
-
-    TODO: remove this tests after the deprecation of ServerRuntime
-    """
-
-    code = "print('Hello, `World`!\n')"
-    input_commands = f"""cat > /tmp/opendevin_jupyter_temp.py <<'EOL'
-{code}
-EOL"""
-    expected_output = [f"cat > /tmp/opendevin_jupyter_temp.py <<'EOL'\n{code}\nEOL"]
     assert split_bash_commands(input_commands) == expected_output
 
 

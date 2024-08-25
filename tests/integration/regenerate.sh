@@ -55,17 +55,13 @@ cd "$PROJECT_ROOT" || exit 1
 
 mkdir -p $WORKSPACE_BASE
 
-# use environmental variable if exists, otherwise use "ssh"
-SANDBOX_BOX_TYPE="${SANDBOX_TYPE:-ssh}"
-TEST_RUNTIME="${TEST_RUNTIME:-eventstream}"  # can be server or eventstream
-# TODO: set this as default after ServerRuntime is deprecated
-if [ "$TEST_RUNTIME" == "eventstream" ] && [ -z "$SANDBOX_CONTAINER_IMAGE" ]; then
-  SANDBOX_CONTAINER_IMAGE="ubuntu:22.04"
+# use environmental variable if exists
+TEST_RUNTIME="${TEST_RUNTIME:-eventstream}"
+if [ -z "$SANDBOX_CONTAINER_IMAGE" ]; then
+  SANDBOX_CONTAINER_IMAGE="nikolaik/python-nodejs:python3.11-nodejs22"
 fi
 
-PERSIST_SANDBOX=false
 MAX_ITERATIONS=15
-echo "SANDBOX_BOX_TYPE: $SANDBOX_BOX_TYPE"
 echo "TEST_RUNTIME: $TEST_RUNTIME"
 
 agents=(
@@ -108,13 +104,11 @@ run_test() {
   local pytest_cmd="poetry run pytest --cache-clear -vvsxx $SCRIPT_DIR/test_agent.py::$test_name"
   # Check if TEST_IN_CI is defined
   if [ -n "$TEST_IN_CI" ]; then
-    pytest_cmd+=" --cov=agenthub --cov=opendevin --cov-report=xml --cov-append"
+    pytest_cmd+=" --cov=agenthub --cov=openhands --cov-report=xml --cov-append"
   fi
 
   env SCRIPT_DIR="$SCRIPT_DIR" \
     PROJECT_ROOT="$PROJECT_ROOT" \
-    SANDBOX_BOX_TYPE="$SANDBOX_BOX_TYPE" \
-    PERSIST_SANDBOX=$PERSIST_SANDBOX \
     WORKSPACE_BASE=$WORKSPACE_BASE \
     WORKSPACE_MOUNT_PATH=$WORKSPACE_MOUNT_PATH \
     MAX_ITERATIONS=$MAX_ITERATIONS \
@@ -185,8 +179,6 @@ regenerate_without_llm() {
   set -x
   env SCRIPT_DIR="$SCRIPT_DIR" \
       PROJECT_ROOT="$PROJECT_ROOT" \
-      SANDBOX_BOX_TYPE="$SANDBOX_BOX_TYPE" \
-      PERSIST_SANDBOX=$PERSIST_SANDBOX \
       WORKSPACE_BASE=$WORKSPACE_BASE \
       WORKSPACE_MOUNT_PATH=$WORKSPACE_MOUNT_PATH \
       MAX_ITERATIONS=$MAX_ITERATIONS \
@@ -216,14 +208,12 @@ regenerate_with_llm() {
     env SCRIPT_DIR="$SCRIPT_DIR" \
       PROJECT_ROOT="$PROJECT_ROOT" \
       DEBUG=true \
-      SANDBOX_BOX_TYPE="$SANDBOX_BOX_TYPE" \
-      PERSIST_SANDBOX=$PERSIST_SANDBOX \
       WORKSPACE_BASE=$WORKSPACE_BASE \
       WORKSPACE_MOUNT_PATH=$WORKSPACE_MOUNT_PATH \
       DEFAULT_AGENT=$agent \
       RUNTIME="$TEST_RUNTIME" \
       SANDBOX_CONTAINER_IMAGE="$SANDBOX_CONTAINER_IMAGE" \
-      poetry run python "$PROJECT_ROOT/opendevin/core/main.py" \
+      poetry run python "$PROJECT_ROOT/openhands/core/main.py" \
       -i $MAX_ITERATIONS \
       -t "$task Do not ask me for confirmation at any point." \
       -c $agent
@@ -323,7 +313,7 @@ for ((i = 0; i < num_of_tests; i++)); do
           echo -e "  1. The agent is unable to finish the task within $MAX_ITERATIONS steps."
           echo -e "  2. The agent thinks itself has finished the task, but fails the validation in the test code."
           echo -e "  3. There is something non-deterministic in the prompt."
-          echo -e "  4. There is a bug in this script, or in OpenDevin code."
+          echo -e "  4. There is a bug in this script, or in OpenHands code."
           echo -e "NOTE: Some of the above problems could sometimes be fixed by a retry (with a more powerful LLM)."
           echo -e "      You could also consider improving the agent, increasing MAX_ITERATIONS, or skipping this test for this agent."
           exit 1

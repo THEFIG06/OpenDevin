@@ -24,7 +24,7 @@ def process_git_patch(patch):
 
     patch = patch.replace('\r\n', '\n')
     # There might be some weird characters at the beginning of the patch
-    # due to some OpenDevin inference command outputs
+    # due to some OpenHands inference command outputs
 
     # FOR EXAMPLE:
     # git diff --no-color --cached 895f28f9cbed817c00ab68770433170d83132d90
@@ -45,9 +45,16 @@ def process_git_patch(patch):
 
 
 def convert_row_to_swebench_format(row):
+    if 'git_patch' in row:
+        model_patch = row['git_patch']
+    elif 'test_result' in row and 'git_patch' in row['test_result']:
+        model_patch = row['test_result']['git_patch']
+    else:
+        raise ValueError(f'Row {row} does not have a git_patch')
+
     return {
         'instance_id': row['instance_id'],
-        'model_patch': process_git_patch(row['git_patch']),
+        'model_patch': process_git_patch(model_patch),
         'model_name_or_path': model_name,
     }
 

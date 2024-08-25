@@ -2,9 +2,10 @@
 
 This folder contains evaluation harness for evaluating agents on the Entity-deduction-Arena Benchmark, from the paper [Probing the Multi-turn Planning Capabilities of LLMs via 20 Question Games](https://arxiv.org/abs/2310.01468), presented in ACL 2024 main conference.
 
-## Configure OpenDevin and your LLM
+## Setup Environment and LLM Configuration
 
-Create a `config.toml` file if it does not exist at the root of the workspace. Please check [README.md](../../README.md) for how to set this up.
+Please follow instruction [here](../README.md#setup) to setup your local development environment and LLM.
+
 
 ## Start the evaluation
 
@@ -19,7 +20,7 @@ where `model_config` is mandatory, while `git-version`, `agent`, `dataset` and `
 - `model_config`, e.g. `eval_gpt4_1106_preview`, is the config group name for your
 LLM settings, as defined in your `config.toml`.
 
-- `git-version`, e.g. `HEAD`, is the git commit hash of the OpenDevin version you would
+- `git-version`, e.g. `HEAD`, is the git commit hash of the OpenHands version you would
 like to evaluate. It could also be a release tag like `0.6.2`.
 
 - `agent`, e.g. `CodeActAgent`, is the name of the agent for benchmarks, defaulting

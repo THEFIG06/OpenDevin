@@ -1,4 +1,4 @@
-from opendevin.events.action import (
+from openhands.events.action import (
     Action,
     AddTaskAction,
     AgentFinishAction,
@@ -11,8 +11,8 @@ from opendevin.events.action import (
     MessageAction,
     ModifyTaskAction,
 )
-from opendevin.events.action.action import ActionConfirmationStatus
-from opendevin.events.serialization import (
+from openhands.events.action.action import ActionConfirmationStatus
+from openhands.events.serialization import (
     event_from_dict,
     event_to_dict,
     event_to_memory,
@@ -86,6 +86,7 @@ def test_cmd_run_action_serialization_deserialization():
         'args': {
             'command': 'echo "Hello world"',
             'thought': '',
+            'keep_prompt': True,
             'is_confirmed': ActionConfirmationStatus.CONFIRMED,
         },
     }

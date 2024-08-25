@@ -198,13 +198,14 @@ ten actions--more happened before that.
     "args": {
       "command": "bash hello.sh",
       "thought": "",
+      "keep_prompt": true,
       "is_confirmed": "confirmed"
     }
   },
   {
     "source": "agent",
     "observation": "run",
-    "content": "hello\r\n\r\nopendevin@docker-desktop:/workspace $ ",
+    "content": "hello\r\n\r\n[Python Interpreter: /openhands/poetry/openhands-5O4_aCHf-py3.11/bin/python]\nopenhands@docker-desktop:/workspace $ ",
     "extras": {
       "command_id": -1,
       "command": "bash hello.sh",

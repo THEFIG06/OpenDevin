@@ -3,8 +3,8 @@ import type { Config } from "@docusaurus/types";
 import { themes as prismThemes } from "prism-react-renderer";
 
 const config: Config = {
-  title: "OpenDevin",
-  tagline: "Code Less, Make More",
+  title: "OpenHands",
+  tagline: "An Open Platform for AI Software Developers as Generalist Agents",
   favicon: "img/logo.png",
 
   // Set the production url of your site here
@@ -12,8 +12,8 @@ const config: Config = {
   baseUrl: "/",
 
   // GitHub pages deployment config.
-  organizationName: "OpenDevin",
-  projectName: "OpenDevin",
+  organizationName: "All-Hands-AI",
+  projectName: "OpenHands",
   trailingSlash: false,
 
   onBrokenLinks: "throw",
@@ -32,6 +32,10 @@ const config: Config = {
     },
   },
 
+  markdown: {
+    mermaid: true,
+  },
+  themes: ['@docusaurus/theme-mermaid'],
   presets: [
     [
       "classic",
@@ -59,9 +63,9 @@ const config: Config = {
   themeConfig: {
     image: "img/docusaurus.png",
     navbar: {
-      title: "OpenDevin",
+      title: "OpenHands",
       logo: {
-        alt: "OpenDevin",
+        alt: "OpenHands",
         src: "img/logo.png",
       },
       items: [
@@ -77,9 +81,8 @@ const config: Config = {
           position: "left",
           label: "Codebase",
         },
-        { to: "/faq", label: "FAQ", position: "left" },
         {
-          href: "https://github.com/OpenDevin/OpenDevin",
+          href: "https://github.com/All-Hands-AI/OpenHands",
           label: "GitHub",
           position: "right",
         },

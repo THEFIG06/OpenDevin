@@ -1,4 +1,4 @@
-# Evaluating GPQA (A Graduate-Level Google-Proof Q&A Benchmark) with OpenDevin
+# Evaluating GPQA (A Graduate-Level Google-Proof Q&A Benchmark) with OpenHands
 
 Implements the evaluation of agents on the GPQA benchmark introduced in [GPQA: A Graduate-Level Google-Proof Q&A Benchmark](https://arxiv.org/abs/2308.07124).
 
@@ -15,48 +15,21 @@ Further references:
 - https://paperswithcode.com/dataset/gpqa
 - https://github.com/idavidrein/gpqa
 
+## Setup Environment and LLM Configuration
 
-## Setup Environment
-
-Please follow [this document](https://github.com/OpenDevin/OpenDevin/blob/main/Development.md) to setup local develop environment for OpenDevin.
-
-
-## Configure OpenDevin and your LLM
-
-Create a `config.toml` file (you can copy from `config.template.toml`) if it does not exist at the root of the workspace.
-
-Add the following configurations:
-
-```toml
-# TODO: Change these to the model you want to evaluate
-[llm.eval_gpt4_1106_preview]
-model = "gpt-4-1106-preview"
-api_key = "XXX"
-temperature = 0.0
-
-[llm.eval_azure_openai_compatible_model]
-model = "AZURE_OPENAI_EXACT_DEPLOYMENT_MODEL_NAME"
-base_url = "AZURE_OPENAI_ENDPOINT"
-api_key = "AZURE_ENDPOINT_API_KEY"
-temperature = 0.0
-```
+Please follow instruction [here](../README.md#setup) to setup your local development environment and LLM.
 
 ## Run Inference on GPQA Benchmark
 'gpqa_main', 'gqpa_diamond', 'gpqa_experts', 'gpqa_extended' -- data split options
-From the root of the OpenDevin repo, run the following command:
+From the root of the OpenHands repo, run the following command:
 ```bash
 ./evaluation/gpqa/scripts/run_infer.sh [model_config_name] [git-version] [num_samples_eval] [data_split] [AgentClass]
 ```
 You can replace `model_config_name` with any model you set up in `config.toml`.
 
 - `model_config_name`: The model configuration name from `config.toml` that you want to evaluate.
-- `git-version`, e.g. `HEAD`, is the git commit hash of the OpenDevin version you would
+- `git-version`, e.g. `HEAD`, is the git commit hash of the OpenHands version you would
 like to evaluate. It could also be a release tag like `0.6.2`.
 - `num_samples_eval`: Number of samples to evaluate (useful for testing and debugging).
 - `data_split`: The data split to evaluate on. Must be one of `gpqa_main`, `gqpa_diamond`, `gpqa_experts`, `gpqa_extended`. Defaults to `gpqa_diamond` as done in the paper.
 - `AgentClass`: The agent class to use for evaluation. Currently only supports `CodeActAgent` for CodeActAgent.
-
-
-## Benchmark Evaluation Results
-
-- [] TODO: Finish the evaluation run across the entire benchmark and compile results
