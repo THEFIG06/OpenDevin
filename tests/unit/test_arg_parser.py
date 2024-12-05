@@ -1,6 +1,6 @@
 import pytest
 
-from openhands.core.config import _DEFAULT_AGENT, _MAX_ITERATIONS, get_parser
+from openhands.core.config import OH_DEFAULT_AGENT, OH_MAX_ITERATIONS, get_parser
 
 
 def test_parser_default_values():
@@ -10,8 +10,8 @@ def test_parser_default_values():
     assert args.directory is None
     assert args.task == ''
     assert args.file is None
-    assert args.agent_cls == _DEFAULT_AGENT
-    assert args.max_iterations == _MAX_ITERATIONS
+    assert args.agent_cls == OH_DEFAULT_AGENT
+    assert args.max_iterations == OH_MAX_ITERATIONS
     assert args.max_budget_per_task is None
     assert args.eval_output_dir == 'evaluation/evaluation_outputs/outputs'
     assert args.eval_n_limit is None
@@ -104,7 +104,7 @@ def test_help_message(capsys):
         parser.parse_args(['--help'])
     captured = capsys.readouterr()
     help_output = captured.out
-
+    print(help_output)
     expected_elements = [
         'usage:',
         'Run an agent with a specific task',
@@ -120,12 +120,14 @@ def test_help_message(capsys):
         '--eval-n-limit EVAL_N_LIMIT',
         '--eval-num-workers EVAL_NUM_WORKERS',
         '--eval-note EVAL_NOTE',
+        '--eval-ids EVAL_IDS',
         '-l LLM_CONFIG, --llm-config LLM_CONFIG',
         '-n NAME, --name NAME',
+        '--config-file CONFIG_FILE',
     ]
 
     for element in expected_elements:
         assert element in help_output, f"Expected '{element}' to be in the help message"
 
     option_count = help_output.count('  -')
-    assert option_count == 13, f'Expected 13 options, found {option_count}'
+    assert option_count == 15, f'Expected 15 options, found {option_count}'

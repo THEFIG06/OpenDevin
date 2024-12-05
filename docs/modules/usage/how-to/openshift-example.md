@@ -1,11 +1,11 @@
-# Use OpenHands in OpenShift/K8S
+# Kubernetes
 
-There are different ways and scenarios that you can do, we're just mentioning one example here:
-1. Create a PV "as a cluster admin" to map workspace_base data and docker directory to the pod through the worker node.
-2. Create a PVC to be able to mount those PVs to the POD
-3. Create a POD which contains two containers; the OpenHands and Sandbox containers.
+There are different ways you might run OpenHands on Kubernetes or OpenShift. This guide goes through one possible way:
+1. Create a PV "as a cluster admin" to map workspace_base data and docker directory to the pod through the worker node
+2. Create a PVC to be able to mount those PVs to the pod
+3. Create a pod which contains two containers; the OpenHands and Sandbox containers
 
-## Steps to follow the above example.
+## Detailed Steps for the Example Above
 
 > Note: Make sure you are logged in to the cluster first with the proper account for each step. PV creation requires cluster administrator!
 
@@ -135,8 +135,8 @@ LAST SEEN   TYPE     REASON                 OBJECT                              
 10s         Normal   WaitForFirstConsumer   persistentvolumeclaim/workspace-pvc   waiting for first consumer to be created before binding
 ```
 
-3. Create the POD yaml file:
-Sample POD yaml file below:
+3. Create the pod yaml file:
+Sample pod yaml file below:
 
 - pod.yaml
 
@@ -150,7 +150,7 @@ metadata:
 spec:
   containers:
   - name: openhands-app-2024
-    image: ghcr.io/all-hands-ai/openhands:main
+    image: docker.all-hands.dev/all-hands-ai/openhands:main
     env:
     - name: SANDBOX_USER_ID
       value: "1000"
@@ -164,7 +164,7 @@ spec:
     ports:
     - containerPort: 3000
   - name: openhands-sandbox-2024
-    image: ghcr.io/all-hands-ai/sandbox:main
+    image: docker.all-hands.dev/all-hands-ai/runtime:main
     ports:
     - containerPort: 51963
     command: ["/usr/sbin/sshd", "-D", "-p 51963", "-o", "PermitRootLogin=yes"]
@@ -176,6 +176,7 @@ spec:
     persistentVolumeClaim:
       claimName: docker-pvc
 ```
+
 
 ```bash
 # create the pod
@@ -204,10 +205,10 @@ LAST SEEN   TYPE     REASON                   OBJECT                            
 9s          Normal   SuccessfulAttachVolume   pod/openhands-app-2024                AttachVolume.Attach succeeded for volume "pvc-2b1d223a-1c8f-4990-8e3d-68061a9ae252"
 9s          Normal   SuccessfulAttachVolume   pod/openhands-app-2024                AttachVolume.Attach succeeded for volume "pvc-31f15b25-faad-4665-a25f-201a530379af"
 6s          Normal   AddedInterface           pod/openhands-app-2024                Add eth0 [10.128.2.48/23] from openshift-sdn
-6s          Normal   Pulled                   pod/openhands-app-2024                Container image "ghcr.io/all-hands-ai/openhands:main" already present on machine
+6s          Normal   Pulled                   pod/openhands-app-2024                Container image "docker.all-hands.dev/all-hands-ai/openhands:main" already present on machine
 6s          Normal   Created                  pod/openhands-app-2024                Created container openhands-app-2024
 6s          Normal   Started                  pod/openhands-app-2024                Started container openhands-app-2024
-6s          Normal   Pulled                   pod/openhands-app-2024                Container image "ghcr.io/all-hands-ai/sandbox:main" already present on machine
+6s          Normal   Pulled                   pod/openhands-app-2024                Container image "docker.all-hands.dev/all-hands-ai/sandbox:main" already present on machine
 5s          Normal   Created                  pod/openhands-app-2024                Created container openhands-sandbox-2024
 5s          Normal   Started                  pod/openhands-app-2024                Started container openhands-sandbox-2024
 83s         Normal   WaitForFirstConsumer     persistentvolumeclaim/workspace-pvc   waiting for first consumer to be created before binding
@@ -264,33 +265,165 @@ Events:                   <none>
 ![image](https://github.com/user-attachments/assets/12f94804-a0c7-4744-b873-e003c9caf40e)
 
 
-## Challenges
-Some of the challenages that would be needed to improve:
 
-1. Install GIT into the container:
-   This can be resolved by building a custom image which includes GIT software and use that image during pod deplyment.
+## GCP GKE Openhands deployment
 
-Example below: "to be tested!"
+**Warning**: this deployment grants the OpenHands application access to the Kubernetes docker socket, which creates security risk. Use at your own discretion.
+1- Create policy for privillege access
+2- Create gke credentials(optional)
+3- Create openhands deployment
+4- Verification and ui access commands
+5- Tshoot pod to verify the internal container
 
-```dockerfile
-FROM ghcr.io/all-hands-ai/openhands:main
-
-# Install Git
-RUN apt-get update && apt-get install -y git
-
-# Ensure /opt/workspace_base is writable
-RUN mkdir -p /opt/workspace_base && chown -R 1000:1000 /opt/workspace_base
-
-# Verify Git installation
-RUN git --version
+1. create policy for privillege access
+```bash
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: privileged-role
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: privileged-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: privileged-role
+subjects:
+- kind: ServiceAccount
+  name: default  # Change to your service account name
+  namespace: default
 ```
+2. create gke credentials(optional)
+```bash
+kubectl create secret generic google-cloud-key \
+  --from-file=key.json=/path/to/your/google-cloud-key.json
+  ```
+3. create openhands deployment
+## as this is tested for the single worker node if you have multiple specify the flag for the single worker
 
-2. Mount a shared development directory "i.e. one hosted in EC2 instance" to the POD:
-   This can be also done by sharing the developement directory to the worker node through a sharing software (NFS), then creating a pv and pvc as described above to access that directory.
+```bash
+kind: Deployment
+metadata:
+  name: openhands-app-2024
+  labels:
+    app: openhands-app-2024
+spec:
+  replicas: 1  # You can increase this number for multiple replicas
+  selector:
+    matchLabels:
+      app: openhands-app-2024
+  template:
+    metadata:
+      labels:
+        app: openhands-app-2024
+    spec:
+      containers:
+      - name: openhands-app-2024
+        image: docker.all-hands.dev/all-hands-ai/openhands:main
+        env:
+        - name: SANDBOX_USER_ID
+          value: "1000"
+        - name: SANDBOX_API_HOSTNAME
+          value: '10.164.0.4'
+        - name: WORKSPACE_MOUNT_PATH
+          value: "/tmp/workspace_base"
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/tmp/workspace_base/google-cloud-key.json"
+        volumeMounts:
+        - name: workspace-volume
+          mountPath: /tmp/workspace_base
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        - name: google-credentials
+          mountPath: "/tmp/workspace_base/google-cloud-key.json"
+        securityContext:
+          privileged: true  # Add this to allow privileged access
+        ports:
+        - containerPort: 3000
+      - name: openhands-sandbox-2024
+        image: docker.all-hands.dev/all-hands-ai/runtime:main
+    #    securityContext:
+    #      privileged: true  # Add this to allow privileged access
+        ports:
+        - containerPort: 51963
+        command: ["/usr/sbin/sshd", "-D", "-p 51963", "-o", "PermitRootLogin=yes"]
+      volumes:
+      #- name: workspace-volume
+      #  persistentVolumeClaim:
+      #    claimName: workspace-pvc
+      - name: workspace-volume
+        emptyDir: {}
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock       # Use host's Docker socket
+          type: Socket
+      - name: google-credentials
+        secret:
+          secretName: google-cloud-key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openhands-app-2024-svc
+spec:
+  selector:
+    app: openhands-app-2024
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 3000
+  - name: ssh
+    protocol: TCP
+    port: 51963
+    targetPort: 51963
+  type: LoadBalancer
+  ```
 
-3. Not all Agents working! Just tested CoderAgent with an openai API key and produced results.
+5. Tshoot pod to verify the internal container
+### if you want to know more regarding the internal container runtime use below mention pod deployment use kubectl exec -it to enter into container and you can check the contaienr run time using normal docker commands like "docker ps -a"
 
-
-## Discuss
-
-For other issues or questions join the [Slack](https://join.slack.com/t/opendevin/shared_invite/zt-2oikve2hu-UDxHeo8nsE69y6T7yFX_BA) or [Discord](https://discord.gg/ESHStjSjD4) and ask!
+```bash
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-in-docker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: docker-in-docker
+  template:
+    metadata:
+      labels:
+        app: docker-in-docker
+    spec:
+      containers:
+      - name: dind
+        image: docker:20.10-dind
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket
+```

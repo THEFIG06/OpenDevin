@@ -1,7 +1,11 @@
 # Local LLM with Ollama
 
+:::warning
+When using a Local LLM, OpenHands may have limited functionality.
+:::
+
 Ensure that you have the Ollama server up and running.
-For detailed startup instructions, refer to [here](https://github.com/ollama/ollama)
+For detailed startup instructions, refer to [here](https://github.com/ollama/ollama).
 
 This guide assumes you've started ollama with `ollama serve`. If you're running ollama differently (e.g. inside docker), the instructions might need to be modified. Please note that if you're running WSL the default ollama configuration blocks requests from docker containers. See [here](#configuring-ollama-service-wsl-en).
 
@@ -24,44 +28,32 @@ mistral:7b-instruct-v0.2-q4_K_M eb14864c7427    4.4 GB  2 weeks ago
 starcoder2:latest               f67ae0f64584    1.7 GB  19 hours ago
 ```
 
-## Start OpenHands
+## Run OpenHands with Docker
 
-### Docker
-
-Use the instructions [here](../intro) to start OpenHands using Docker.
+### Start OpenHands
+Use the instructions [here](../getting-started) to start OpenHands using Docker.
 But when running `docker run`, you'll need to add a few more arguments:
 
 ```bash
---add-host host.docker.internal:host-gateway \
--e LLM_API_KEY="ollama" \
--e LLM_BASE_URL="http://host.docker.internal:11434" \
--e LLM_OLLAMA_BASE_URL="http://host.docker.internal:11434" \
-```
-
-LLM_OLLAMA_BASE_URL is optional. If you set it, it will be used to show the available installed models in the UI.
-
-Example:
-
-```bash
-# The directory you want OpenHands to modify. MUST be an absolute path!
-export WORKSPACE_BASE=$(pwd)/workspace
-
-docker run \
-    -it \
-    --pull=always \
+docker run # ...
     --add-host host.docker.internal:host-gateway \
-    -e SANDBOX_USER_ID=$(id -u) \
-    -e LLM_API_KEY="ollama" \
-    -e LLM_BASE_URL="http://host.docker.internal:11434" \
     -e LLM_OLLAMA_BASE_URL="http://host.docker.internal:11434" \
-    -e WORKSPACE_MOUNT_PATH=$WORKSPACE_BASE \
-    -v $WORKSPACE_BASE:/opt/workspace_base \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -p 3000:3000 \
-    ghcr.io/all-hands-ai/openhands:main
+    # ...
 ```
 
-You should now be able to connect to `http://localhost:3000/`
+LLM_OLLAMA_BASE_URL is optional. If you set it, it will be used to show
+the available installed models in the UI.
+
+
+### Configure the Web Application
+
+When running `openhands`, you'll need to set the following in the OpenHands UI through the Settings:
+- the model to "ollama/&lt;model-name&gt;"
+- the base url to `http://host.docker.internal:11434`
+- the API key is optional, you can use any string, such as `ollama`.
+
+
+## Run OpenHands in Development Mode
 
 ### Build from Source
 
@@ -73,23 +65,22 @@ Make sure `config.toml` is there by running `make setup-config` which will creat
 workspace_base="./workspace"
 
 [llm]
-model="ollama/codellama:7b"
-api_key="ollama"
 embedding_model="local"
-base_url="http://localhost:11434"
 ollama_base_url="http://localhost:11434"
 
 ```
 
-Replace `LLM_MODEL` of your choice if you need to.
+Done! Now you can start OpenHands by: `make run`. You now should be able to connect to `http://localhost:3000/`
 
-Done! Now you can start OpenHands by: `make run` without Docker. You now should be able to connect to `http://localhost:3000/`
-
-## Select your Model
+### Configure the Web Application
 
 In the OpenHands UI, click on the Settings wheel in the bottom-left corner.
 Then in the `Model` input, enter `ollama/codellama:7b`, or the name of the model you pulled earlier.
-If it doesn’t show up in a dropdown, that’s fine, just type it in. Click Save when you’re done.
+If it doesn’t show up in the dropdown, enable `Advanced Settings` and type it in. Please note: you need the model name as listed by `ollama list`, with the prefix `ollama/`.
+
+In the API Key field, enter `ollama` or any value, since you don't need a particular key.
+
+In the Base URL field, enter `http://localhost:11434`.
 
 And now you're ready to go!
 
@@ -168,18 +159,11 @@ CUSTOM_LLM_PROVIDER="openai"
 ### Docker
 
 ```bash
-docker run \
-    -it \
-    --pull=always \
-    -e SANDBOX_USER_ID=$(id -u) \
+docker run # ...
     -e LLM_MODEL="openai/lmstudio" \
     -e LLM_BASE_URL="http://host.docker.internal:1234/v1" \
     -e CUSTOM_LLM_PROVIDER="openai" \
-    -e WORKSPACE_MOUNT_PATH=$WORKSPACE_BASE \
-    -v $WORKSPACE_BASE:/opt/workspace_base \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -p 3000:3000 \
-    ghcr.io/all-hands-ai/openhands:main
+    # ...
 ```
 
 You should now be able to connect to `http://localhost:3000/`
@@ -196,9 +180,9 @@ base_url="http://localhost:1234/v1"
 custom_llm_provider="openai"
 ```
 
-Done! Now you can start Devin by: `make run` without Docker. You now should be able to connect to `http://localhost:3000/`
+Done! Now you can start OpenHands by: `make run` without Docker. You now should be able to connect to `http://localhost:3000/`
 
-# Note:
+# Note
 
 For WSL, run the following commands in cmd to set up the networking mode to mirrored:
 

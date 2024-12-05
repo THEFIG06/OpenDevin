@@ -1,24 +1,26 @@
 import { combineReducers, configureStore } from "@reduxjs/toolkit";
-import agentReducer from "./state/agentSlice";
-import browserReducer from "./state/browserSlice";
-import chatReducer from "./state/chatSlice";
-import codeReducer from "./state/codeSlice";
-import commandReducer from "./state/commandSlice";
-import errorsReducer from "./state/errorsSlice";
-import taskReducer from "./state/taskSlice";
-import jupyterReducer from "./state/jupyterSlice";
-import securityAnalyzerReducer from "./state/securityAnalyzerSlice";
+import agentReducer from "./state/agent-slice";
+import browserReducer from "./state/browser-slice";
+import chatReducer from "./state/chat-slice";
+import codeReducer from "./state/code-slice";
+import fileStateReducer from "./state/file-state-slice";
+import initialQueryReducer from "./state/initial-query-slice";
+import commandReducer from "./state/command-slice";
+import jupyterReducer from "./state/jupyter-slice";
+import securityAnalyzerReducer from "./state/security-analyzer-slice";
+import statusReducer from "./state/status-slice";
 
 export const rootReducer = combineReducers({
+  fileState: fileStateReducer,
+  initalQuery: initialQueryReducer,
   browser: browserReducer,
   chat: chatReducer,
   code: codeReducer,
   cmd: commandReducer,
-  errors: errorsReducer,
-  task: taskReducer,
   agent: agentReducer,
   jupyter: jupyterReducer,
   securityAnalyzer: securityAnalyzerReducer,
+  status: statusReducer,
 });
 
 const store = configureStore({

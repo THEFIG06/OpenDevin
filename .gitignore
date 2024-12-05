@@ -121,6 +121,7 @@ celerybeat.pid
 
 # Environments
 .env
+frontend/.env
 .venv
 env/
 venv/
@@ -173,11 +174,15 @@ evaluation/bird/data
 evaluation/gaia/data
 evaluation/gorilla/data
 evaluation/toolqa/data
+evaluation/scienceagentbench/benchmark
+evaluation/commit0_bench/repos
+
+# openhands resolver
+output/
 
 # frontend
 
 # dependencies
-frontend/node_modules
 frontend/.pnp
 frontend/bun.lockb
 frontend/yarn.lock
@@ -217,8 +222,6 @@ config.toml
 config.toml_
 config.toml.bak
 
-containers/agnostic_sandbox
-
 # swe-bench-eval
 image_build_logs
 run_instance_logs
@@ -228,3 +231,5 @@ runtime_*.tar
 # docker build
 containers/runtime/Dockerfile
 containers/runtime/project.tar.gz
+containers/runtime/code
+**/node_modules/

@@ -1,7 +1,9 @@
 import uvicorn
 from fastapi import FastAPI, WebSocket
 
+from openhands.core.logger import openhands_logger as logger
 from openhands.core.schema import ActionType
+from openhands.utils.shutdown_listener import should_continue
 
 app = FastAPI()
 
@@ -15,17 +17,17 @@ async def websocket_endpoint(websocket: WebSocket):
     )
 
     try:
-        while True:
+        while should_continue():
             # receive message
             data = await websocket.receive_json()
-            print(f'Received message: {data}')
+            logger.debug(f'Received message: {data}')
 
             # send mock response to client
             response = {'message': f'receive {data}'}
             await websocket.send_json(response)
-            print(f'Sent message: {response}')
+            logger.debug(f'Sent message: {response}')
     except Exception as e:
-        print(f'WebSocket Error: {e}')
+        logger.debug(f'WebSocket Error: {e}')
 
 
 @app.get('/')

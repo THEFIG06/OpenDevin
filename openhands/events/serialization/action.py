@@ -12,7 +12,11 @@ from openhands.events.action.commands import (
     IPythonRunCellAction,
 )
 from openhands.events.action.empty import NullAction
-from openhands.events.action.files import FileReadAction, FileWriteAction
+from openhands.events.action.files import (
+    FileEditAction,
+    FileReadAction,
+    FileWriteAction,
+)
 from openhands.events.action.message import MessageAction
 from openhands.events.action.tasks import AddTaskAction, ModifyTaskAction
 
@@ -24,6 +28,7 @@ actions = (
     BrowseInteractiveAction,
     FileReadAction,
     FileWriteAction,
+    FileEditAction,
     AgentFinishAction,
     AgentRejectAction,
     AgentDelegateAction,
@@ -52,10 +57,30 @@ def action_from_dict(action: dict) -> Action:
             f"'{action['action']=}' is not defined. Available actions: {ACTION_TYPE_TO_CLASS.keys()}"
         )
     args = action.get('args', {})
+    # Remove timestamp from args if present
+    timestamp = args.pop('timestamp', None)
+
+    # compatibility for older event streams
+    # is_confirmed has been renamed to confirmation_state
+    is_confirmed = args.pop('is_confirmed', None)
+    if is_confirmed is not None:
+        args['confirmation_state'] = is_confirmed
+
+    # images_urls has been renamed to image_urls
+    if 'images_urls' in args:
+        args['image_urls'] = args.pop('images_urls')
+
     try:
         decoded_action = action_class(**args)
         if 'timeout' in action:
             decoded_action.timeout = action['timeout']
-    except TypeError:
-        raise LLMMalformedActionError(f'action={action} has the wrong arguments')
+
+        # Set timestamp if it was provided
+        if timestamp:
+            decoded_action._timestamp = timestamp
+
+    except TypeError as e:
+        raise LLMMalformedActionError(
+            f'action={action} has the wrong arguments: {str(e)}'
+        )
     return decoded_action

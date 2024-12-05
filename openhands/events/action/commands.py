@@ -13,6 +13,10 @@ from openhands.events.action.action import (
 class CmdRunAction(Action):
     command: str
     thought: str = ''
+    blocking: bool = False
+    # If False, the command will be run in a non-blocking / interactive way
+    # The partial command outputs will be returned as output observation.
+    # If True, the command will be run for max .timeout seconds.
     keep_prompt: bool = True
     # if True, the command prompt will be kept in the command output observation
     # Example of command output:
@@ -21,9 +25,10 @@ class CmdRunAction(Action):
     # file2.txt
     # root@sandbox:~# <-- this is the command prompt
 
+    hidden: bool = False
     action: str = ActionType.RUN
     runnable: ClassVar[bool] = True
-    is_confirmed: ActionConfirmationStatus = ActionConfirmationStatus.CONFIRMED
+    confirmation_state: ActionConfirmationStatus = ActionConfirmationStatus.CONFIRMED
     security_risk: ActionSecurityRisk | None = None
 
     @property
@@ -42,9 +47,12 @@ class CmdRunAction(Action):
 class IPythonRunCellAction(Action):
     code: str
     thought: str = ''
+    include_extra: bool = (
+        True  # whether to include CWD & Python interpreter in the output
+    )
     action: str = ActionType.RUN_IPYTHON
     runnable: ClassVar[bool] = True
-    is_confirmed: ActionConfirmationStatus = ActionConfirmationStatus.CONFIRMED
+    confirmation_state: ActionConfirmationStatus = ActionConfirmationStatus.CONFIRMED
     security_risk: ActionSecurityRisk | None = None
     kernel_init_code: str = ''  # code to run in the kernel (if the kernel is restarted)
 

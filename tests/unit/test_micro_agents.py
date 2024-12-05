@@ -6,14 +6,12 @@ import pytest
 import yaml
 from pytest import TempPathFactory
 
-from agenthub.micro.registry import all_microagents
+from openhands.agenthub.micro.registry import all_microagents
 from openhands.controller.agent import Agent
 from openhands.controller.state.state import State
 from openhands.core.config import AgentConfig
-from openhands.events import EventSource
 from openhands.events.action import MessageAction
 from openhands.events.stream import EventStream
-from openhands.memory.history import ShortTermHistory
 from openhands.storage import get_file_store
 
 
@@ -44,7 +42,7 @@ def test_all_agents_are_loaded():
     assert all_microagents is not None
     assert len(all_microagents) > 1
 
-    base = os.path.join('agenthub', 'micro')
+    base = os.path.join('openhands', 'agenthub', 'micro')
     full_path = os.path.dirname(__file__) + '/../../' + base
     agent_names = set()
     for root, _, files in os.walk(full_path):
@@ -62,16 +60,22 @@ def test_coder_agent_with_summary(event_stream: EventStream, agent_configs: dict
     mock_llm = MagicMock()
     content = json.dumps({'action': 'finish', 'args': {}})
     mock_llm.completion.return_value = {'choices': [{'message': {'content': content}}]}
+    mock_llm.format_messages_for_llm.return_value = [
+        {
+            'role': 'user',
+            'content': "This is a dummy task. This is a dummy summary about this repo. Here's a summary of the codebase, as it relates to this task.",
+        }
+    ]
 
     coder_agent = Agent.get_cls('CoderAgent')(
         llm=mock_llm, config=agent_configs['CoderAgent']
     )
     assert coder_agent is not None
 
+    # give it some history
     task = 'This is a dummy task'
-    history = ShortTermHistory()
-    history.set_event_stream(event_stream)
-    event_stream.add_event(MessageAction(content=task), EventSource.USER)
+    history = list()
+    history.append(MessageAction(content=task))
 
     summary = 'This is a dummy summary about this repo'
     state = State(history=history, inputs={'summary': summary})
@@ -79,7 +83,11 @@ def test_coder_agent_with_summary(event_stream: EventStream, agent_configs: dict
 
     mock_llm.completion.assert_called_once()
     _, kwargs = mock_llm.completion.call_args
-    prompt = kwargs['messages'][0]['content'][0]['text']
+    prompt_element = kwargs['messages'][0]['content']
+    if isinstance(prompt_element, dict):
+        prompt = prompt_element['content']
+    else:
+        prompt = prompt_element
     assert task in prompt
     assert "Here's a summary of the codebase, as it relates to this task" in prompt
     assert summary in prompt
@@ -92,16 +100,27 @@ def test_coder_agent_without_summary(event_stream: EventStream, agent_configs: d
     mock_llm = MagicMock()
     content = json.dumps({'action': 'finish', 'args': {}})
     mock_llm.completion.return_value = {'choices': [{'message': {'content': content}}]}
+    mock_llm.format_messages_for_llm.return_value = [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'text',
+                    'text': "This is a dummy task. This is a dummy summary about this repo. Here's a summary of the codebase, as it relates to this task.",
+                }
+            ],
+        }
+    ]
 
     coder_agent = Agent.get_cls('CoderAgent')(
         llm=mock_llm, config=agent_configs['CoderAgent']
     )
     assert coder_agent is not None
 
+    # give it some history
     task = 'This is a dummy task'
-    history = ShortTermHistory()
-    history.set_event_stream(event_stream)
-    event_stream.add_event(MessageAction(content=task), EventSource.USER)
+    history = list()
+    history.append(MessageAction(content=task))
 
     # set state without codebase summary
     state = State(history=history)
@@ -109,6 +128,10 @@ def test_coder_agent_without_summary(event_stream: EventStream, agent_configs: d
 
     mock_llm.completion.assert_called_once()
     _, kwargs = mock_llm.completion.call_args
-    prompt = kwargs['messages'][0]['content'][0]['text']
-    assert task in prompt
+    prompt_element = kwargs['messages'][0]['content']
+    if isinstance(prompt_element, dict):
+        prompt = prompt_element['content']
+    else:
+        prompt = prompt_element
+    print(f'\n{prompt_element}\n')
     assert "Here's a summary of the codebase, as it relates to this task" not in prompt
