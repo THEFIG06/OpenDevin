@@ -18,6 +18,7 @@ from openhands.events.action import (
     BrowseURLAction,
     CmdRunAction,
     FileEditAction,
+    FileReadAction,
     IPythonRunCellAction,
     MessageAction,
 )
@@ -26,6 +27,7 @@ from openhands.events.observation import (
     BrowserOutputObservation,
     CmdOutputObservation,
     FileEditObservation,
+    FileReadObservation,
     IPythonRunCellObservation,
     UserRejectObservation,
 )
@@ -128,6 +130,7 @@ class CodeActAgent(Agent):
                 - CmdRunAction: For executing bash commands
                 - IPythonRunCellAction: For running IPython code
                 - FileEditAction: For editing files
+                - FileReadAction: For reading files using openhands-aci commands
                 - BrowseInteractiveAction: For browsing the web
                 - AgentFinishAction: For ending the interaction
                 - MessageAction: For sending messages
@@ -151,13 +154,11 @@ class CodeActAgent(Agent):
                 AgentDelegateAction,
                 IPythonRunCellAction,
                 FileEditAction,
+                FileReadAction,
                 BrowseInteractiveAction,
                 BrowseURLAction,
             ),
-        ) or (
-            isinstance(action, (AgentFinishAction, CmdRunAction))
-            and action.source == 'agent'
-        ):
+        ) or (isinstance(action, CmdRunAction) and action.source == 'agent'):
             tool_metadata = action.tool_call_metadata
             assert tool_metadata is not None, (
                 'Tool call metadata should NOT be None when function calling is enabled. Action: '
@@ -166,8 +167,12 @@ class CodeActAgent(Agent):
 
             llm_response: ModelResponse = tool_metadata.model_response
             assistant_msg = llm_response.choices[0].message
+
             # Add the LLM message (assistant) that initiated the tool calls
             # (overwrites any previous message with the same response_id)
+            logger.debug(
+                f'Tool calls type: {type(assistant_msg.tool_calls)}, value: {assistant_msg.tool_calls}'
+            )
             pending_tool_call_action_messages[llm_response.id] = Message(
                 role=assistant_msg.role,
                 # tool call content SHOULD BE a string
@@ -177,6 +182,33 @@ class CodeActAgent(Agent):
                 tool_calls=assistant_msg.tool_calls,
             )
             return []
+        elif isinstance(action, AgentFinishAction):
+            role = 'user' if action.source == 'user' else 'assistant'
+
+            # when agent finishes, it has tool_metadata
+            # which has already been executed, and it doesn't have a response
+            # when the user finishes (/exit), we don't have tool_metadata
+            tool_metadata = action.tool_call_metadata
+            if tool_metadata is not None:
+                # take the response message from the tool call
+                assistant_msg = tool_metadata.model_response.choices[0].message
+                content = assistant_msg.content or ''
+
+                # save content if any, to thought
+                if action.thought:
+                    if action.thought != content:
+                        action.thought += '\n' + content
+                else:
+                    action.thought = content
+
+                # remove the tool call metadata
+                action.tool_call_metadata = None
+            return [
+                Message(
+                    role=role,
+                    content=[TextContent(text=action.thought)],
+                )
+            ]
         elif isinstance(action, MessageAction):
             role = 'user' if action.source == 'user' else 'assistant'
             content = [TextContent(text=action.content or '')]
@@ -211,6 +243,7 @@ class CodeActAgent(Agent):
         - CmdOutputObservation: Formats command execution results with exit codes
         - IPythonRunCellObservation: Formats IPython cell execution results, replacing base64 images
         - FileEditObservation: Formats file editing results
+        - FileReadObservation: Formats file reading results from openhands-aci
         - AgentDelegateObservation: Formats results from delegated agent tasks
         - ErrorObservation: Formats error messages from failed actions
         - UserRejectObservation: Formats user rejection messages
@@ -260,6 +293,10 @@ class CodeActAgent(Agent):
         elif isinstance(obs, FileEditObservation):
             text = truncate_content(str(obs), max_message_chars)
             message = Message(role='user', content=[TextContent(text=text)])
+        elif isinstance(obs, FileReadObservation):
+            message = Message(
+                role='user', content=[TextContent(text=obs.content)]
+            )  # Content is already truncated by openhands-aci
         elif isinstance(obs, BrowserOutputObservation):
             text = obs.get_agent_obs_text()
             message = Message(
@@ -373,6 +410,9 @@ class CodeActAgent(Agent):
             - Messages from the same role are combined to prevent consecutive same-role messages
             - For Anthropic models, specific messages are cached according to their documentation
         """
+        if not self.prompt_manager:
+            raise Exception('Prompt Manager not instantiated.')
+
         messages: list[Message] = [
             Message(
                 role='system',

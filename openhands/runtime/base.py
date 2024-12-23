@@ -9,6 +9,7 @@ from typing import Callable
 from requests.exceptions import ConnectionError
 
 from openhands.core.config import AppConfig, SandboxConfig
+from openhands.core.exceptions import AgentRuntimeDisconnectedError
 from openhands.core.logger import openhands_logger as logger
 from openhands.events import EventSource, EventStream, EventStreamSubscriber
 from openhands.events.action import (
@@ -45,22 +46,6 @@ STATUS_MESSAGES = {
     'STATUS$CONTAINER_STARTED': 'Container started.',
     'STATUS$WAITING_FOR_CLIENT': 'Waiting for client...',
 }
-
-
-class RuntimeUnavailableError(Exception):
-    pass
-
-
-class RuntimeNotReadyError(RuntimeUnavailableError):
-    pass
-
-
-class RuntimeDisconnectedError(RuntimeUnavailableError):
-    pass
-
-
-class RuntimeNotFoundError(RuntimeUnavailableError):
-    pass
 
 
 def _default_env_vars(sandbox_config: SandboxConfig) -> dict[str, str]:
@@ -193,7 +178,7 @@ class Runtime(FileEditRuntimeMixin):
             except Exception as e:
                 err_id = ''
                 if isinstance(e, ConnectionError) or isinstance(
-                    e, RuntimeDisconnectedError
+                    e, AgentRuntimeDisconnectedError
                 ):
                     err_id = 'STATUS$ERROR_RUNTIME_DISCONNECTED'
                 logger.error(
@@ -212,6 +197,47 @@ class Runtime(FileEditRuntimeMixin):
             # this might be unnecessary, since source should be set by the event stream when we're here
             source = event.source if event.source else EventSource.AGENT
             self.event_stream.add_event(observation, source)  # type: ignore[arg-type]
+
+    def clone_repo(self, github_token: str | None, selected_repository: str | None):
+        if not github_token or not selected_repository:
+            return
+        url = f'https://{github_token}@github.com/{selected_repository}.git'
+        dir_name = selected_repository.split('/')[1]
+        action = CmdRunAction(
+            command=f'git clone {url} {dir_name} ; cd {dir_name} ; git checkout -b openhands-workspace'
+        )
+        self.log('info', f'Cloning repo: {selected_repository}')
+        self.run_action(action)
+
+    def get_custom_microagents(self, selected_repository: str | None) -> list[str]:
+        custom_microagents_content = []
+        custom_microagents_dir = Path('.openhands') / 'microagents'
+
+        dir_name = str(custom_microagents_dir)
+        if selected_repository:
+            dir_name = str(
+                Path(selected_repository.split('/')[1]) / custom_microagents_dir
+            )
+        oh_instructions_header = '---\nname: openhands_instructions\nagent: CodeActAgent\ntriggers:\n- ""\n---\n'
+        obs = self.read(FileReadAction(path='.openhands_instructions'))
+        if isinstance(obs, ErrorObservation):
+            self.log('error', 'Failed to read openhands_instructions')
+        else:
+            openhands_instructions = oh_instructions_header + obs.content
+            self.log('info', f'openhands_instructions: {openhands_instructions}')
+            custom_microagents_content.append(openhands_instructions)
+
+        files = self.list_files(dir_name)
+
+        self.log('info', f'Found {len(files)} custom microagents.')
+
+        for fname in files:
+            content = self.read(
+                FileReadAction(path=str(custom_microagents_dir / fname))
+            ).content
+            custom_microagents_content.append(content)
+
+        return custom_microagents_content
 
     def run_action(self, action: Action) -> Observation:
         """Run an action and return the resulting observation.
