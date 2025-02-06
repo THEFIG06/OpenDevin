@@ -1,13 +1,43 @@
-import posthog from "posthog-js";
 import React from "react";
 import { io, Socket } from "socket.io-client";
-
 import EventLogger from "#/utils/event-logger";
 import { handleAssistantMessage } from "#/services/actions";
+import { showChatError } from "#/utils/error-handler";
 import { useRate } from "#/hooks/use-rate";
+import { OpenHandsParsedEvent } from "#/types/core";
+import {
+  AssistantMessageAction,
+  UserMessageAction,
+} from "#/types/core/actions";
 
-const isOpenHandsMessage = (event: Record<string, unknown>) =>
-  event.action === "message";
+const isOpenHandsEvent = (event: unknown): event is OpenHandsParsedEvent =>
+  typeof event === "object" &&
+  event !== null &&
+  "id" in event &&
+  "source" in event &&
+  "message" in event &&
+  "timestamp" in event;
+
+const isUserMessage = (
+  event: OpenHandsParsedEvent,
+): event is UserMessageAction =>
+  "source" in event &&
+  "type" in event &&
+  event.source === "user" &&
+  event.type === "message";
+
+const isAssistantMessage = (
+  event: OpenHandsParsedEvent,
+): event is AssistantMessageAction =>
+  "source" in event &&
+  "type" in event &&
+  event.source === "agent" &&
+  event.type === "message";
+
+const isMessageAction = (
+  event: OpenHandsParsedEvent,
+): event is UserMessageAction | AssistantMessageAction =>
+  isUserMessage(event) || isAssistantMessage(event);
 
 export enum WsClientProviderStatus {
   CONNECTED,
@@ -32,19 +62,49 @@ const WsClientContext = React.createContext<UseWsClient>({
 
 interface WsClientProviderProps {
   conversationId: string;
-  ghToken: string | null;
+}
+
+interface ErrorArg {
+  message?: string;
+  data?: ErrorArgData | unknown;
+}
+
+interface ErrorArgData {
+  msg_id: string;
+}
+
+export function updateStatusWhenErrorMessagePresent(data: ErrorArg | unknown) {
+  const isObject = (val: unknown): val is object =>
+    !!val && typeof val === "object";
+  const isString = (val: unknown): val is string => typeof val === "string";
+  if (isObject(data) && "message" in data && isString(data.message)) {
+    if (data.message === "websocket error") {
+      return;
+    }
+    let msgId: string | undefined;
+    let metadata: Record<string, unknown> = {};
+
+    if ("data" in data && isObject(data.data)) {
+      if ("msg_id" in data.data && isString(data.data.msg_id)) {
+        msgId = data.data.msg_id;
+      }
+      metadata = data.data as Record<string, unknown>;
+    }
+
+    showChatError({
+      message: data.message,
+      source: "websocket",
+      metadata,
+      msgId,
+    });
+  }
 }
 
 export function WsClientProvider({
-  ghToken,
   conversationId,
   children,
 }: React.PropsWithChildren<WsClientProviderProps>) {
   const sioRef = React.useRef<Socket | null>(null);
-  const ghTokenRef = React.useRef<string | null>(ghToken);
-  const disconnectRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
   const [status, setStatus] = React.useState(
     WsClientProviderStatus.DISCONNECTED,
   );
@@ -66,7 +126,7 @@ export function WsClientProvider({
   }
 
   function handleMessage(event: Record<string, unknown>) {
-    if (isOpenHandsMessage(event)) {
+    if (isOpenHandsEvent(event) && isMessageAction(event)) {
       messageRateHandler.record(new Date().getTime());
     }
     setEvents((prevEvents) => [...prevEvents, event]);
@@ -77,7 +137,7 @@ export function WsClientProvider({
     handleAssistantMessage(event);
   }
 
-  function handleDisconnect() {
+  function handleDisconnect(data: unknown) {
     setStatus(WsClientProviderStatus.DISCONNECTED);
     const sio = sioRef.current;
     if (!sio) {
@@ -85,12 +145,17 @@ export function WsClientProvider({
     }
     sio.io.opts.query = sio.io.opts.query || {};
     sio.io.opts.query.latest_event_id = lastEventRef.current?.id;
+    updateStatusWhenErrorMessagePresent(data);
   }
 
-  function handleError() {
-    posthog.capture("socket_error");
+  function handleError(data: unknown) {
     setStatus(WsClientProviderStatus.DISCONNECTED);
+    updateStatusWhenErrorMessagePresent(data);
   }
+
+  React.useEffect(() => {
+    lastEventRef.current = null;
+  }, [conversationId]);
 
   React.useEffect(() => {
     if (!conversationId) {
@@ -110,9 +175,6 @@ export function WsClientProvider({
 
     sio = io(baseUrl, {
       transports: ["websocket"],
-      auth: {
-        github_token: ghToken || undefined,
-      },
       query,
     });
     sio.on("connect", handleConnect);
@@ -122,7 +184,6 @@ export function WsClientProvider({
     sio.on("disconnect", handleDisconnect);
 
     sioRef.current = sio;
-    ghTokenRef.current = ghToken;
 
     return () => {
       sio.off("connect", handleConnect);
@@ -131,26 +192,18 @@ export function WsClientProvider({
       sio.off("connect_failed", handleError);
       sio.off("disconnect", handleDisconnect);
     };
-  }, [ghToken, conversationId]);
+  }, [conversationId]);
 
-  // Strict mode mounts and unmounts each component twice, so we have to wait in the destructor
-  // before actually disconnecting the socket and cancel the operation if the component gets remounted.
-  React.useEffect(() => {
-    const timeout = disconnectRef.current;
-    if (timeout != null) {
-      clearTimeout(timeout);
-    }
-
-    return () => {
-      disconnectRef.current = setTimeout(() => {
-        const sio = sioRef.current;
-        if (sio) {
-          sio.off("disconnect", handleDisconnect);
-          sio.disconnect();
-        }
-      }, 100);
-    };
-  }, []);
+  React.useEffect(
+    () => () => {
+      const sio = sioRef.current;
+      if (sio) {
+        sio.off("disconnect", handleDisconnect);
+        sio.disconnect();
+      }
+    },
+    [],
+  );
 
   const value = React.useMemo<UseWsClient>(
     () => ({
@@ -162,11 +215,7 @@ export function WsClientProvider({
     [status, messageRateHandler.isUnderThreshold, events],
   );
 
-  return (
-    <WsClientContext.Provider value={value}>
-      {children}
-    </WsClientContext.Provider>
-  );
+  return <WsClientContext value={value}>{children}</WsClientContext>;
 }
 
 export function useWsClient() {

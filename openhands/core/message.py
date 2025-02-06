@@ -62,6 +62,8 @@ class Message(BaseModel):
     # - tool execution result (to LLM)
     tool_call_id: str | None = None
     name: str | None = None  # name of the tool
+    # force string serializer
+    force_string_serializer: bool = False
 
     @property
     def contains_image(self) -> bool:
@@ -73,7 +75,9 @@ class Message(BaseModel):
         # - into a single string: for providers that don't support list of content items (e.g. no vision, no tool calls)
         # - into a list of content items: the new APIs of providers with vision/prompt caching/tool calls
         # NOTE: remove this when litellm or providers support the new API
-        if self.cache_enabled or self.vision_enabled or self.function_calling_enabled:
+        if not self.force_string_serializer and (
+            self.cache_enabled or self.vision_enabled or self.function_calling_enabled
+        ):
             return self._list_serializer()
         # some providers, like HF and Groq/llama, don't support a list here, but a single string
         return self._string_serializer()
@@ -97,7 +101,11 @@ class Message(BaseModel):
             # See discussion here for details: https://github.com/BerriAI/litellm/issues/6422#issuecomment-2438765472
             if self.role == 'tool' and item.cache_prompt:
                 role_tool_with_prompt_caching = True
-                d.pop('cache_control')
+                if isinstance(d, dict):
+                    d.pop('cache_control')
+                elif isinstance(d, list):
+                    for d_item in d:
+                        d_item.pop('cache_control')
             if isinstance(item, TextContent):
                 content.append(d)
             elif isinstance(item, ImageContent) and self.vision_enabled:
