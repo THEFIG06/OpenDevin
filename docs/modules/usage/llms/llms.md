@@ -1,5 +1,9 @@
 # 🤖 LLM Backends
 
+:::note
+This section is for users who want to connect OpenHands to different LLMs.
+:::
+
 OpenHands can connect to any LLM supported by LiteLLM. However, it requires a powerful model to work.
 
 ## Model Recommendations
@@ -9,10 +13,12 @@ recommendations for model selection. Our latest benchmarking results can be foun
 
 Based on these findings and community feedback, the following models have been verified to work reasonably well with OpenHands:
 
-- anthropic/claude-3-5-sonnet-20241022 (recommended)
-- anthropic/claude-3-5-haiku-20241022
-- deepseek/deepseek-chat
-- gpt-4o
+- [anthropic/claude-3-7-sonnet-20250219](https://www.anthropic.com/api) (recommended)
+- [gemini/gemini-2.5-pro](https://blog.google/technology/google-deepmind/gemini-model-thinking-updates-march-2025/)
+- [deepseek/deepseek-chat](https://api-docs.deepseek.com/)
+- [openai/o3-mini](https://openai.com/index/openai-o3-mini/)
+- [all-hands/openhands-lm-32b-v0.1](https://www.all-hands.dev/blog/introducing-openhands-lm-32b----a-strong-open-coding-agent-model) -- available through [OpenRouter](https://openrouter.ai/all-hands/openhands-lm-32b-v0.1)
+
 
 :::warning
 OpenHands will issue many prompts to the LLM you configure. Most of these LLMs cost money, so be sure to set spending
@@ -38,10 +44,10 @@ The following can be set in the OpenHands UI through the Settings:
 - `LLM Provider`
 - `LLM Model`
 - `API Key`
-- `Base URL` (through `Advanced Settings`)
+- `Base URL` (through `Advanced` settings)
 
 There are some settings that may be necessary for some LLMs/providers that cannot be set through the UI. Instead, these
-can be set through environment variables passed to the [docker run command](/modules/usage/installation#start-the-app)
+can be set through environment variables passed to the docker run command when starting the app
 using `-e`:
 
 - `LLM_API_VERSION`
@@ -56,6 +62,7 @@ We have a few guides for running OpenHands with specific model providers:
 - [Azure](llms/azure-llms)
 - [Google](llms/google-llms)
 - [Groq](llms/groq)
+- [Local LLMs with SGLang or vLLM](llms/../local-llms.md)
 - [LiteLLM Proxy](llms/litellm-proxy)
 - [OpenAI](llms/openai-llms)
 - [OpenRouter](llms/openrouter)
@@ -63,22 +70,22 @@ We have a few guides for running OpenHands with specific model providers:
 ### API retries and rate limits
 
 LLM providers typically have rate limits, sometimes very low, and may require retries. OpenHands will automatically
-retry requests if it receives a Rate Limit Error (429 error code), API connection error, or other transient errors.
+retry requests if it receives a Rate Limit Error (429 error code).
 
 You can customize these options as you need for the provider you're using. Check their documentation, and set the
 following environment variables to control the number of retries and the time between retries:
 
-- `LLM_NUM_RETRIES` (Default of 8)
-- `LLM_RETRY_MIN_WAIT` (Default of 15 seconds)
-- `LLM_RETRY_MAX_WAIT` (Default of 120 seconds)
+- `LLM_NUM_RETRIES` (Default of 4 times)
+- `LLM_RETRY_MIN_WAIT` (Default of 5 seconds)
+- `LLM_RETRY_MAX_WAIT` (Default of 30 seconds)
 - `LLM_RETRY_MULTIPLIER` (Default of 2)
 
 If you are running OpenHands in development mode, you can also set these options in the `config.toml` file:
 
 ```toml
 [llm]
-num_retries = 8
-retry_min_wait = 15
-retry_max_wait = 120
+num_retries = 4
+retry_min_wait = 5
+retry_max_wait = 30
 retry_multiplier = 2
 ```

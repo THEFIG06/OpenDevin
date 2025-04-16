@@ -6,6 +6,7 @@ select = [
     "I",
     "Q",
     "B",
+    "ASYNC",
 ]
 
 ignore = [
@@ -24,3 +25,6 @@ inline-quotes = "single"
 
 [format]
 quote-style = "single"
+
+[lint.flake8-bugbear]
+extend-immutable-calls = ["Depends", "fastapi.Depends", "fastapi.params.Depends"]

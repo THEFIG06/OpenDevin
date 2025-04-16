@@ -44,12 +44,16 @@ export function ConversationPanel({ onClose }: ConversationPanelProps) {
 
   const handleConfirmDelete = () => {
     if (selectedConversationId) {
-      deleteConversation({ conversationId: selectedConversationId });
-      setConfirmDeleteModalVisible(false);
-
-      if (cid === selectedConversationId) {
-        endSession();
-      }
+      deleteConversation(
+        { conversationId: selectedConversationId },
+        {
+          onSuccess: () => {
+            if (cid === selectedConversationId) {
+              endSession();
+            }
+          },
+        },
+      );
     }
   };
 
@@ -69,11 +73,13 @@ export function ConversationPanel({ onClose }: ConversationPanelProps) {
     <div
       ref={ref}
       data-testid="conversation-panel"
-      className="w-[350px] h-full border border-neutral-700 bg-neutral-800 rounded-xl overflow-y-auto"
+      className="w-[350px] h-full border border-neutral-700 bg-base-secondary rounded-xl overflow-y-auto absolute"
     >
-      <div className="pt-4 px-4 flex items-center justify-between">
-        {isFetching && <LoadingSpinner size="small" />}
-      </div>
+      {isFetching && (
+        <div className="w-full h-full absolute flex justify-center items-center">
+          <LoadingSpinner size="small" />
+        </div>
+      )}
       {error && (
         <div className="flex flex-col items-center justify-center h-full">
           <p className="text-danger">{error.message}</p>
@@ -102,7 +108,9 @@ export function ConversationPanel({ onClose }: ConversationPanelProps) {
               title={project.title}
               selectedRepository={project.selected_repository}
               lastUpdatedAt={project.last_updated_at}
+              createdAt={project.created_at}
               status={project.status}
+              conversationId={project.conversation_id}
             />
           )}
         </NavLink>
@@ -110,7 +118,10 @@ export function ConversationPanel({ onClose }: ConversationPanelProps) {
 
       {confirmDeleteModalVisible && (
         <ConfirmDeleteModal
-          onConfirm={handleConfirmDelete}
+          onConfirm={() => {
+            handleConfirmDelete();
+            setConfirmDeleteModalVisible(false);
+          }}
           onCancel={() => setConfirmDeleteModalVisible(false)}
         />
       )}

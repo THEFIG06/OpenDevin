@@ -1,4 +1,4 @@
-SHELL=/bin/bash
+SHELL=/usr/bin/env bash
 # Makefile for OpenHands project
 
 # Variables
@@ -81,10 +81,10 @@ check-nodejs:
 	@if command -v node > /dev/null; then \
 		NODE_VERSION=$(shell node --version | sed -E 's/v//g'); \
 		IFS='.' read -r -a NODE_VERSION_ARRAY <<< "$$NODE_VERSION"; \
-		if [ "$${NODE_VERSION_ARRAY[0]}" -ge 20 ]; then \
+		if [ "$${NODE_VERSION_ARRAY[0]}" -ge 22 ]; then \
 			echo "$(BLUE)Node.js $$NODE_VERSION is already installed.$(RESET)"; \
 		else \
-			echo "$(RED)Node.js 20.x or later is required. Please install Node.js 20.x or later to continue.$(RESET)"; \
+			echo "$(RED)Node.js 22.x or later is required. Please install Node.js 22.x or later to continue.$(RESET)"; \
 			exit 1; \
 		fi; \
 	else \
@@ -133,20 +133,29 @@ install-python-dependencies:
 		export HNSWLIB_NO_NATIVE=1; \
 		poetry run pip install chroma-hnswlib; \
 	fi
-	@poetry install --without llama-index
-	@if [ -f "/etc/manjaro-release" ]; then \
-		echo "$(BLUE)Detected Manjaro Linux. Installing Playwright dependencies...$(RESET)"; \
-		poetry run pip install playwright; \
-		poetry run playwright install chromium; \
+	@if [ -n "${POETRY_GROUP}" ]; then \
+		echo "Installing only POETRY_GROUP=${POETRY_GROUP}"; \
+		poetry install --only $${POETRY_GROUP}; \
 	else \
-		if [ ! -f cache/playwright_chromium_is_installed.txt ]; then \
-			echo "Running playwright install --with-deps chromium..."; \
-			poetry run playwright install --with-deps chromium; \
-			mkdir -p cache; \
-			touch cache/playwright_chromium_is_installed.txt; \
+		poetry install; \
+	fi
+	@if [ "${INSTALL_PLAYWRIGHT}" != "false" ] && [ "${INSTALL_PLAYWRIGHT}" != "0" ]; then \
+		if [ -f "/etc/manjaro-release" ]; then \
+			echo "$(BLUE)Detected Manjaro Linux. Installing Playwright dependencies...$(RESET)"; \
+			poetry run pip install playwright; \
+			poetry run playwright install chromium; \
 		else \
-			echo "Setup already done. Skipping playwright installation."; \
+			if [ ! -f cache/playwright_chromium_is_installed.txt ]; then \
+				echo "Running playwright install --with-deps chromium..."; \
+				poetry run playwright install --with-deps chromium; \
+				mkdir -p cache; \
+				touch cache/playwright_chromium_is_installed.txt; \
+			else \
+				echo "Setup already done. Skipping playwright installation."; \
+			fi \
 		fi \
+	else \
+		echo "Skipping Playwright installation (INSTALL_PLAYWRIGHT=${INSTALL_PLAYWRIGHT})."; \
 	fi
 	@echo "$(GREEN)Python dependencies installed successfully.$(RESET)"
 
@@ -185,7 +194,7 @@ test:
 
 build-frontend:
 	@echo "$(YELLOW)Building frontend...$(RESET)"
-	@cd frontend && npm run build
+	@cd frontend && npm run prepare && npm run build
 
 # Start backend
 start-backend:
@@ -195,7 +204,14 @@ start-backend:
 # Start frontend
 start-frontend:
 	@echo "$(YELLOW)Starting frontend...$(RESET)"
-	@cd frontend && VITE_BACKEND_HOST=$(BACKEND_HOST_PORT) VITE_FRONTEND_PORT=$(FRONTEND_PORT) npm run dev -- --port $(FRONTEND_PORT) --host $(BACKEND_HOST)
+	@cd frontend && \
+	if grep -qi microsoft /proc/version 2>/dev/null; then \
+		echo "Detected WSL environment. Using 'dev_wsl'"; \
+		SCRIPT=dev_wsl; \
+	else \
+		SCRIPT=dev; \
+	fi; \
+	VITE_BACKEND_HOST=$(BACKEND_HOST_PORT) VITE_FRONTEND_PORT=$(FRONTEND_PORT) npm run $$SCRIPT -- --port $(FRONTEND_PORT) --host $(BACKEND_HOST)
 
 # Common setup for running the app (non-callable)
 _run_setup:
@@ -231,12 +247,6 @@ docker-run:
 		docker compose up $(OPTIONS); \
 	fi
 
-# Run the app (WSL mode)
-run-wsl:
-	@echo "$(YELLOW)Running the app in WSL mode...$(RESET)"
-	@$(MAKE) -s _run_setup
-	@cd frontend && echo "$(BLUE)Starting frontend with npm (WSL mode)...$(RESET)" && npm run dev_wsl -- --port $(FRONTEND_PORT)
-	@echo "$(GREEN)Application started successfully in WSL mode.$(RESET)"
 
 # Setup config.toml
 setup-config:
@@ -264,35 +274,6 @@ setup-config-prompts:
 
 	@read -p "Enter your LLM base URL [mostly used for local LLMs, leave blank if not needed - example: http://localhost:5001/v1/]: " llm_base_url; \
 	 if [[ ! -z "$$llm_base_url" ]]; then echo "base_url=\"$$llm_base_url\"" >> $(CONFIG_FILE).tmp; fi
-
-	@echo "Enter your LLM Embedding Model"; \
-		echo "Choices are:"; \
-		echo "  - openai"; \
-		echo "  - azureopenai"; \
-		echo "  - Embeddings available only with OllamaEmbedding:"; \
-		echo "    - llama2"; \
-		echo "    - mxbai-embed-large"; \
-		echo "    - nomic-embed-text"; \
-		echo "    - all-minilm"; \
-		echo "    - stable-code"; \
-		echo "    - bge-m3"; \
-		echo "    - bge-large"; \
-		echo "    - paraphrase-multilingual"; \
-		echo "    - snowflake-arctic-embed"; \
-		echo "  - Leave blank to default to 'BAAI/bge-small-en-v1.5' via huggingface"; \
-		read -p "> " llm_embedding_model; \
-		echo "embedding_model=\"$$llm_embedding_model\"" >> $(CONFIG_FILE).tmp; \
-		if [ "$$llm_embedding_model" = "llama2" ] || [ "$$llm_embedding_model" = "mxbai-embed-large" ] || [ "$$llm_embedding_model" = "nomic-embed-text" ] || [ "$$llm_embedding_model" = "all-minilm" ] || [ "$$llm_embedding_model" = "stable-code" ]; then \
-			read -p "Enter the local model URL for the embedding model (will set llm.embedding_base_url): " llm_embedding_base_url; \
-				echo "embedding_base_url=\"$$llm_embedding_base_url\"" >> $(CONFIG_FILE).tmp; \
-		elif [ "$$llm_embedding_model" = "azureopenai" ]; then \
-			read -p "Enter the Azure endpoint URL (will overwrite llm.base_url): " llm_base_url; \
-				echo "base_url=\"$$llm_base_url\"" >> $(CONFIG_FILE).tmp; \
-			read -p "Enter the Azure LLM Embedding Deployment Name: " llm_embedding_deployment_name; \
-				echo "embedding_deployment_name=\"$$llm_embedding_deployment_name\"" >> $(CONFIG_FILE).tmp; \
-			read -p "Enter the Azure API Version: " llm_api_version; \
-				echo "api_version=\"$$llm_api_version\"" >> $(CONFIG_FILE).tmp; \
-		fi
 
 
 # Develop in container

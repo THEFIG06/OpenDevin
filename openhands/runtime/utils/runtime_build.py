@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List
 
 import docker
-from dirhash import dirhash
+from dirhash import dirhash  # type: ignore
 from jinja2 import Environment, FileSystemLoader
 
 import openhands
@@ -25,7 +25,7 @@ class BuildFromImageType(Enum):
     LOCK = 'lock'  # Fastest: Reuse the most recent image with the exact SAME dependencies (lock files)
 
 
-def get_runtime_image_repo():
+def get_runtime_image_repo() -> str:
     return os.getenv('OH_RUNTIME_RUNTIME_IMAGE_REPO', 'ghcr.io/all-hands-ai/runtime')
 
 
@@ -69,7 +69,6 @@ def get_runtime_image_repo_and_tag(base_image: str) -> tuple[str, str]:
     Returns:
     - tuple[str, str]: The Docker repo and tag of the Docker image
     """
-
     if get_runtime_image_repo() in base_image:
         logger.debug(
             f'The provided image [{base_image}] is already a valid runtime image.\n'
@@ -115,6 +114,7 @@ def build_runtime_image(
     extra_build_args: List[str] | None = None,
 ) -> str:
     """Prepares the final docker build folder.
+
     If dry_run is False, it will also build the OpenHands runtime Docker image using the docker build folder.
 
     Parameters:
@@ -252,7 +252,7 @@ def prep_build_folder(
     base_image: str,
     build_from: BuildFromImageType,
     extra_deps: str | None,
-):
+) -> None:
     # Copy the source code to directory. It will end up in build_folder/code
     # If package is not found, build from source code
     openhands_source_dir = Path(openhands.__file__).parent
@@ -301,7 +301,7 @@ def truncate_hash(hash: str) -> str:
     return ''.join(result)
 
 
-def get_hash_for_lock_files(base_image: str):
+def get_hash_for_lock_files(base_image: str) -> str:
     openhands_source_dir = Path(openhands.__file__).parent
     md5 = hashlib.md5()
     md5.update(base_image.encode())
@@ -318,11 +318,11 @@ def get_hash_for_lock_files(base_image: str):
     return result
 
 
-def get_tag_for_versioned_image(base_image: str):
+def get_tag_for_versioned_image(base_image: str) -> str:
     return base_image.replace('/', '_s_').replace(':', '_t_').lower()[-96:]
 
 
-def get_hash_for_source_files():
+def get_hash_for_source_files() -> str:
     openhands_source_dir = Path(openhands.__file__).parent
     dir_hash = dirhash(
         openhands_source_dir,
@@ -348,8 +348,8 @@ def _build_sandbox_image(
     versioned_tag: str | None,
     platform: str | None = None,
     extra_build_args: List[str] | None = None,
-):
-    """Build and tag the sandbox image. The image will be tagged with all tags that do not yet exist"""
+) -> str:
+    """Build and tag the sandbox image. The image will be tagged with all tags that do not yet exist."""
     names = [
         f'{runtime_image_repo}:{source_tag}',
         f'{runtime_image_repo}:{lock_tag}',

@@ -14,6 +14,8 @@ the GitHub API.
 You can use `curl` with the `GITHUB_TOKEN` to interact with GitHub's API.
 ALWAYS use the GitHub API for operations instead of a web browser.
 
+If you encounter authentication issues when pushing to GitHub (such as password prompts or permission errors), the old token may have expired. In such case, update the remote URL to include the current token: `git remote set-url origin https://${GITHUB_TOKEN}@github.com/username/repo.git`
+
 Here are some instructions for pushing, but ONLY do this if the user asks you to:
 * NEVER push directly to the `main` or `master` branch
 * Git config (username and email) is pre-set. Do not modify.
@@ -23,6 +25,7 @@ Here are some instructions for pushing, but ONLY do this if the user asks you to
 * Use the main branch as the base branch, unless the user requests otherwise
 * After opening or updating a pull request, send the user a short message with a link to the pull request.
 * Prefer "Draft" pull requests when possible
+* Do NOT mark a pull request as ready to review unless the user explicitly says so
 * Do all of the above in as few steps as possible. E.g. you could open a PR with one step by running the following bash commands:
 ```bash
 git remote -v && git branch # to find the current org, repo and branch
