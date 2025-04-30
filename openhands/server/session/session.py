@@ -28,7 +28,7 @@ from openhands.llm.llm import LLM
 from openhands.mcp import fetch_mcp_tools_from_config
 from openhands.server.session.agent_session import AgentSession
 from openhands.server.session.conversation_init_data import ConversationInitData
-from openhands.server.settings import Settings
+from openhands.storage.data_models.settings import Settings
 from openhands.storage.files import FileStore
 
 ROOM_KEY = 'room:{sid}'
@@ -139,7 +139,7 @@ class Session:
                 condensers=[
                     BrowserOutputCondenserConfig(),
                     LLMSummarizingCondenserConfig(
-                        llm_config=llm.config, keep_first=3, max_size=80
+                        llm_config=llm.config, keep_first=4, max_size=80
                     ),
                 ]
             )

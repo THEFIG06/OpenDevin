@@ -8,10 +8,14 @@ import {
   Conversation,
   ResultSet,
   GetTrajectoryResponse,
+  GitChangeDiff,
+  GitChange,
+  ConversationTrigger,
 } from "./open-hands.types";
 import { openHands } from "./open-hands-axios";
 import { ApiSettings, PostApiSettings } from "#/types/settings";
 import { GitUser, GitRepository } from "#/types/git";
+import { SuggestedTask } from "#/components/features/home/tasks/task.types";
 
 class OpenHands {
   /**
@@ -147,17 +151,21 @@ class OpenHands {
   }
 
   static async createConversation(
+    conversation_trigger: ConversationTrigger = "gui",
     selectedRepository?: GitRepository,
     initialUserMsg?: string,
     imageUrls?: string[],
     replayJson?: string,
+    suggested_task?: SuggestedTask,
   ): Promise<Conversation> {
     const body = {
+      conversation_trigger,
       selected_repository: selectedRepository,
       selected_branch: undefined,
       initial_user_msg: initialUserMsg,
       image_urls: imageUrls,
       replay_json: replayJson,
+      suggested_task,
     };
 
     const { data } = await openHands.post<Conversation>(
@@ -195,14 +203,6 @@ class OpenHands {
   ): Promise<boolean> {
     const data = await openHands.post("/api/settings", settings);
     return data.status === 200;
-  }
-
-  /**
-   * Reset user settings in server
-   */
-  static async resetSettings(): Promise<boolean> {
-    const response = await openHands.post("/api/reset-settings");
-    return response.status === 200;
   }
 
   static async createCheckoutSession(amount: number): Promise<string> {
@@ -276,6 +276,26 @@ class OpenHands {
     const endpoint =
       appMode === "saas" ? "/api/logout" : "/api/unset-settings-tokens";
     await openHands.post(endpoint);
+  }
+
+  static async getGitChanges(conversationId: string): Promise<GitChange[]> {
+    const { data } = await openHands.get<GitChange[]>(
+      `/api/conversations/${conversationId}/git/changes`,
+    );
+    return data;
+  }
+
+  static async getGitChangeDiff(
+    conversationId: string,
+    path: string,
+  ): Promise<GitChangeDiff> {
+    const { data } = await openHands.get<GitChangeDiff>(
+      `/api/conversations/${conversationId}/git/diff`,
+      {
+        params: { path },
+      },
+    );
+    return data;
   }
 }
 

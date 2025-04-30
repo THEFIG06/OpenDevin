@@ -1,15 +1,25 @@
 import { NavLink } from "react-router";
 import { cn } from "#/utils/utils";
 import { BetaBadge } from "./beta-badge";
+import { LoadingSpinner } from "../shared/loading-spinner";
 
 interface NavTabProps {
   to: string;
   label: string | React.ReactNode;
   icon: React.ReactNode;
   isBeta?: boolean;
+  isLoading?: boolean;
+  rightContent?: React.ReactNode;
 }
 
-export function NavTab({ to, label, icon, isBeta }: NavTabProps) {
+export function NavTab({
+  to,
+  label,
+  icon,
+  isBeta,
+  isLoading,
+  rightContent,
+}: NavTabProps) {
   return (
     <NavLink
       end
@@ -22,11 +32,17 @@ export function NavTab({ to, label, icon, isBeta }: NavTabProps) {
       )}
     >
       {({ isActive }) => (
-        <>
-          <div className={cn(isActive && "text-logo")}>{icon}</div>
-          {label}
-          {isBeta && <BetaBadge />}
-        </>
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-2">
+            <div className={cn(isActive && "text-logo")}>{icon}</div>
+            {label}
+            {isBeta && <BetaBadge />}
+          </div>
+          <div className="flex items-center gap-2">
+            {rightContent}
+            {isLoading && <LoadingSpinner size="small" />}
+          </div>
+        </div>
       )}
     </NavLink>
   );
