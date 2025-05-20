@@ -19,7 +19,7 @@ from openhands.events.action import (
     IPythonRunCellAction,
     MessageAction,
 )
-from openhands.events.action.mcp import McpAction
+from openhands.events.action.mcp import MCPAction
 from openhands.events.action.message import SystemMessageAction
 from openhands.events.event import Event, RecallType
 from openhands.events.observation import (
@@ -184,7 +184,7 @@ class ConversationMemory:
                 - BrowseInteractiveAction: For browsing the web
                 - AgentFinishAction: For ending the interaction
                 - MessageAction: For sending messages
-                - McpAction: For interacting with the MCP server
+                - MCPAction: For interacting with the MCP server
             pending_tool_call_action_messages: Dictionary mapping response IDs to their corresponding messages.
                 Used in function calling mode to track tool calls that are waiting for their results.
 
@@ -210,7 +210,7 @@ class ConversationMemory:
                 FileReadAction,
                 BrowseInteractiveAction,
                 BrowseURLAction,
-                McpAction,
+                MCPAction,
             ),
         ) or (isinstance(action, CmdRunAction) and action.source == 'agent'):
             tool_metadata = action.tool_call_metadata
@@ -360,7 +360,7 @@ class ConversationMemory:
             message = Message(role='user', content=[TextContent(text=text)])
         elif isinstance(obs, IPythonRunCellObservation):
             text = obs.content
-            # replace base64 images with a placeholder
+            # Clean up any remaining base64 images in text content
             splitted = text.split('\n')
             for i, line in enumerate(splitted):
                 if '![image](data:image/png;base64,' in line:
@@ -369,7 +369,15 @@ class ConversationMemory:
                     )
             text = '\n'.join(splitted)
             text = truncate_content(text, max_message_chars)
-            message = Message(role='user', content=[TextContent(text=text)])
+
+            # Create message content with text
+            content = [TextContent(text=text)]
+
+            # Add image URLs if available and vision is active
+            if vision_is_active and obs.image_urls:
+                content.append(ImageContent(image_urls=obs.image_urls))
+
+            message = Message(role='user', content=content)
         elif isinstance(obs, FileEditObservation):
             text = truncate_content(str(obs), max_message_chars)
             message = Message(role='user', content=[TextContent(text=text)])
@@ -412,7 +420,7 @@ class ConversationMemory:
                 logger.debug('Vision disabled for browsing, showing text')
         elif isinstance(obs, AgentDelegateObservation):
             text = truncate_content(
-                obs.outputs['content'] if 'content' in obs.outputs else '',
+                obs.outputs.get('content', obs.content),
                 max_message_chars,
             )
             message = Message(role='user', content=[TextContent(text=text)])
@@ -451,9 +459,13 @@ class ConversationMemory:
                         available_hosts=obs.runtime_hosts,
                         additional_agent_instructions=obs.additional_agent_instructions,
                         date=date,
+                        custom_secrets_descriptions=obs.custom_secrets_descriptions,
                     )
                 else:
-                    runtime_info = RuntimeInfo(date=date)
+                    runtime_info = RuntimeInfo(
+                        date=date,
+                        custom_secrets_descriptions=obs.custom_secrets_descriptions,
+                    )
 
                 repo_instructions = (
                     obs.repo_instructions if obs.repo_instructions else ''
